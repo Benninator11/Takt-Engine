@@ -1,0 +1,10 @@
+[Unit]
+Description=Takt Engine – Testprofil nach Neustart bestätigen lassen
+
+[Timer]
+OnBootSec=120s
+AccuracySec=2s
+Unit=takt-engine-rollback.service
+
+[Install]
+WantedBy=timers.target

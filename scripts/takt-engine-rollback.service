@@ -1,0 +1,8 @@
+[Unit]
+Description=Takt Engine – unbestätigtes Testprofil zurückrollen
+After=local-fs.target
+ConditionPathExists=/var/lib/takt-engine/rollback/pending.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/takt-engine-rollback-check.py
