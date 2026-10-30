@@ -37,7 +37,7 @@ class FanCurveValidationTests(unittest.TestCase):
         points = [dict(point) for point in DEFAULT_FAN_CURVE]
         points[1]["speed_percent"] = 80
         points[2]["speed_percent"] = 69
-        with self.assertRaisesRegex(ValueError, "nicht sinken"):
+        with self.assertRaisesRegex(ValueError, "mit jeder Temperaturstufe steigen"):
             validate_fan_curve(points, 5)
 
     def test_requires_high_final_fan_speed(self):
