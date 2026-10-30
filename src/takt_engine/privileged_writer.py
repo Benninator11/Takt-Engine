@@ -206,7 +206,7 @@ def main() -> int:
                 # original bytes so the user is never left with an unprotected trial.
                 write_config_atomically(path, current)
                 raise
-    except (OSError, ValueError, json.JSONDecodeError, ValidationError, KeyError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError, ValidationError, KeyError, subprocess.SubprocessError) as exc:
         print(f"Takt Engine: {exc}", file=sys.stderr)
         return 2
     print(f"{path} wurde aktualisiert. Ein Neustart ist erforderlich.")
