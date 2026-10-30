@@ -21,9 +21,12 @@ except (ImportError, ValueError) as exc:  # pragma: no cover - depends on target
 
 from takt_engine import __version__
 from takt_engine.bench.runner import run_benchmark
-from takt_engine.core.apply import apply_settings, confirm_boot_rollback, restore_config_backup
+from takt_engine.core.apply import apply_fan_curve, apply_settings, confirm_boot_rollback, restore_config_backup
 from takt_engine.core.config import parse_config_values, read_config, render_managed_config
 from takt_engine.core.detector import detect_hardware
+from takt_engine.core.fan_curve import (
+    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, parse_fan_curve_config, validate_fan_curve,
+)
 from takt_engine.core.limits import (LIMITS, ValidationError, clock_gradient_color, clock_warning_zone,
                                             experimental_clock_warnings, validate_values)
 from takt_engine.core.presets import load_presets
@@ -235,6 +238,7 @@ class TaktEngineWindow(Gtk.Window):
         self._build_overclock_page()
         self._build_presets_page()
         self._build_monitor_page()
+        self._build_fan_curve_page()
         self._build_benchmark_page()
         self._build_status_page()
         self._build_tools_page()
@@ -791,6 +795,198 @@ class TaktEngineWindow(Gtk.Window):
         self.monitor_legend.set_xalign(0)
         self.monitor_legend.get_style_context().add_class("dim-label")
         page.pack_start(self.monitor_legend, False, False, 0)
+
+    def _build_fan_curve_page(self):
+        page = self._make_page("Lüfterkurve")
+        self.fan_curve_temp_spins = []
+        self.fan_curve_speed_spins = []
+
+        if self.model_id != "pi5":
+            note = Gtk.Label(label=(
+                "Die integrierte Lüfterkurven-Steuerung ist derzeit für den Raspberry Pi 5 "
+                "mit dem offiziellen Firmware-Lüfteranschluss vorgesehen. Für dieses Modell "
+                "wurde kein unterstützter Pi-5-Lüfteranschluss erkannt."
+            ))
+            note.set_xalign(0)
+            note.set_line_wrap(True)
+            page.pack_start(note, False, False, 0)
+            return
+
+        intro = Gtk.Label(label=(
+            "Passe die vier Temperaturstufen des Raspberry-Pi-5-Firmwarelüfters an. "
+            "Die Firmware regelt den Lüfter danach selbstständig – auch ohne dass Takt Engine läuft. "
+            "Änderungen werden nach einem Neustart aktiv."
+        ))
+        intro.set_xalign(0)
+        intro.set_line_wrap(True)
+        page.pack_start(intro, False, False, 0)
+
+        safety_note = Gtk.Label(label=(
+            "Sicherheitsgrenzen: Start spätestens bei 55 °C, vier aufsteigende Temperaturstufen "
+            "und mindestens 95 % Lüfterleistung in der letzten Stufe bei höchstens 75 °C. "
+            "Eine angepasste Kurve ist keine Garantie gegen Überhitzung."
+        ))
+        safety_note.set_xalign(0)
+        safety_note.set_line_wrap(True)
+        safety_note.get_style_context().add_class("caution")
+        page.pack_start(safety_note, False, False, 0)
+
+        self.fan_curve_runtime_label = Gtk.Label(label="Lüfter-Telemetrie wird gelesen …")
+        self.fan_curve_runtime_label.set_xalign(0)
+        self.fan_curve_runtime_label.get_style_context().add_class("dim-label")
+        page.pack_start(self.fan_curve_runtime_label, False, False, 0)
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(18)
+        grid.set_row_spacing(10)
+        grid.set_hexpand(False)
+        for column, heading in enumerate(("Stufe", "Temperatur (°C)", "Lüfterleistung (%)")):
+            label = Gtk.Label(label=heading)
+            label.set_xalign(0)
+            label.set_markup(f"<b>{heading}</b>")
+            grid.attach(label, column, 0, 1, 1)
+
+        for index, point in enumerate(DEFAULT_FAN_CURVE):
+            row = index + 1
+            label = Gtk.Label(label=f"Stufe {row}")
+            label.set_xalign(0)
+            temperature = Gtk.SpinButton.new_with_range(40.0, 75.0, 0.5)
+            temperature.set_digits(1)
+            temperature.set_value(point["temperature_c"])
+            speed = Gtk.SpinButton.new_with_range(25, 100, 1)
+            speed.set_digits(0)
+            speed.set_value(point["speed_percent"])
+            grid.attach(label, 0, row, 1, 1)
+            grid.attach(temperature, 1, row, 1, 1)
+            grid.attach(speed, 2, row, 1, 1)
+            self.fan_curve_temp_spins.append(temperature)
+            self.fan_curve_speed_spins.append(speed)
+        page.pack_start(grid, False, False, 4)
+
+        hysteresis_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        hysteresis_label = Gtk.Label(label="Hysterese für alle Stufen (°C):")
+        hysteresis_label.set_xalign(0)
+        hysteresis_row.pack_start(hysteresis_label, False, False, 0)
+        self.fan_hysteresis_spin = Gtk.SpinButton.new_with_range(1.0, 10.0, 0.5)
+        self.fan_hysteresis_spin.set_digits(1)
+        self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
+        hysteresis_row.pack_start(self.fan_hysteresis_spin, False, False, 0)
+        page.pack_start(hysteresis_row, False, False, 4)
+
+        button_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        reset_button = Gtk.Button(label="Standardkurve laden")
+        reset_button.connect("clicked", self.reset_fan_curve)
+        button_row.pack_start(reset_button, False, False, 0)
+        read_button = Gtk.Button(label="Aus config.txt lesen")
+        read_button.connect("clicked", self.load_fan_curve_from_config)
+        button_row.pack_start(read_button, False, False, 0)
+        self.fan_curve_apply_button = Gtk.Button(label="Lüfterkurve anwenden…")
+        self.fan_curve_apply_button.get_style_context().add_class("suggested-action")
+        self.fan_curve_apply_button.connect("clicked", self.apply_fan_curve_dialog)
+        self.fan_curve_apply_button.set_sensitive(bool(self.hardware.config_path))
+        button_row.pack_start(self.fan_curve_apply_button, False, False, 0)
+        page.pack_start(button_row, False, False, 4)
+
+        self.fan_curve_status_label = Gtk.Label(label="Noch nicht angewendet.")
+        self.fan_curve_status_label.set_xalign(0)
+        self.fan_curve_status_label.set_line_wrap(True)
+        self.fan_curve_status_label.get_style_context().add_class("dim-label")
+        page.pack_start(self.fan_curve_status_label, False, False, 0)
+
+        self.load_fan_curve_from_config(announce=False)
+
+    def _current_fan_curve_values(self):
+        points = [
+            {
+                "temperature_c": spin.get_value(),
+                "speed_percent": spin.get_value_as_int(),
+            }
+            for spin, speed in zip(self.fan_curve_temp_spins, self.fan_curve_speed_spins)
+        ]
+        return validate_fan_curve(points, self.fan_hysteresis_spin.get_value())
+
+    def reset_fan_curve(self, _button=None):
+        for index, point in enumerate(DEFAULT_FAN_CURVE):
+            self.fan_curve_temp_spins[index].set_value(point["temperature_c"])
+            self.fan_curve_speed_spins[index].set_value(point["speed_percent"])
+        self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
+        self.fan_curve_status_label.set_text("Dokumentierte Standardkurve geladen. Sie wird erst nach dem Anwenden gespeichert.")
+
+    def load_fan_curve_from_config(self, _button=None, announce=True):
+        if self.model_id != "pi5" or not self.hardware.config_path:
+            if announce:
+                self.show_error("Für dieses Gerät ist keine unterstützte Raspberry-Pi-5-Boot-Konfiguration verfügbar.")
+            return
+        try:
+            config_text = read_config(self.hardware.config_path)
+            curve = parse_fan_curve_config(config_text)
+            for index, point in enumerate(curve["points"]):
+                self.fan_curve_temp_spins[index].set_value(point["temperature_c"])
+                self.fan_curve_speed_spins[index].set_value(point["speed_percent"])
+            self.fan_hysteresis_spin.set_value(curve["hysteresis_c"])
+            self.fan_curve_status_label.set_text(
+                "Lüftereinstellungen aus config.txt eingelesen. Noch nicht geändert."
+            )
+            if announce:
+                self.show_info("Die aktuell konfigurierten Lüfterstufen wurden eingelesen.")
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            if announce:
+                self.show_error(f"Lüfterkurve konnte nicht eingelesen werden: {exc}")
+            else:
+                self.fan_curve_status_label.set_text(f"Lüfterkurve konnte nicht automatisch gelesen werden: {exc}")
+
+    def apply_fan_curve_dialog(self, _button=None):
+        if self.model_id != "pi5" or not self.hardware.config_path:
+            self.show_error("Die Lüfterkurven-Steuerung benötigt einen unterstützten Raspberry Pi 5.")
+            return
+        if self.benchmark_running:
+            self.show_error("Bitte stoppe zuerst den laufenden Benchmark.")
+            return
+        try:
+            curve = self._current_fan_curve_values()
+        except ValueError as exc:
+            self.show_error(str(exc))
+            return
+
+        detail = (
+            "Vor dem Schreiben wird eine Sicherung der config.txt erstellt. "
+            "Die Firmware übernimmt die Kurve erst nach einem Neustart. "
+            "Diese Funktion ist für den integrierten Raspberry-Pi-5-Lüfteranschluss gedacht, "
+            "nicht für beliebige GPIO- oder USB-Lüfter."
+        )
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=Gtk.DialogFlags.MODAL,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Lüfterkurve speichern?",
+        )
+        dialog.format_secondary_text(detail)
+        dialog.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Sichern und speichern", Gtk.ResponseType.OK)
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+
+        self.fan_curve_apply_button.set_sensitive(False)
+        try:
+            backup, result = apply_fan_curve(
+                self.hardware.config_path,
+                curve["points"],
+                curve["hysteresis_c"],
+            )
+            self.fan_curve_status_label.set_text(
+                "Lüfterkurve gespeichert. Ein Neustart ist erforderlich, damit die Firmware sie verwendet."
+            )
+            self.show_info(
+                (result.stdout or "Lüfterkurve gespeichert.").strip()
+                + f"\n\nSicherung: {backup}\nBitte den Raspberry Pi neu starten."
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.show_error(str(exc))
+        finally:
+            self.fan_curve_apply_button.set_sensitive(True)
 
     def _draw_monitor_chart(self, widget, cr):
         width = max(1, widget.get_allocated_width())
@@ -1693,6 +1889,11 @@ class TaktEngineWindow(Gtk.Window):
                 f"{self.safety_banner.get_text()}"
             )
             self.monitor_chart.queue_draw()
+        if hasattr(self, "fan_curve_runtime_label"):
+            fan_text = f"{status.fan_rpm} RPM" if status.fan_rpm is not None else "Drehzahl nicht verfügbar"
+            self.fan_curve_runtime_label.set_text(
+                f"SoC: {_format_temperature(status.temperature_c)} · Aktuelle Lüfterdrehzahl: {fan_text}"
+            )
         if hasattr(self, "cooling_label"):
             fan_text = f"{status.fan_rpm} RPM" if status.fan_rpm is not None else "Lüfterdrehzahl nicht verfügbar"
             cooling_text = status.cooling_states or "keine Cooling-Device-Statuswerte verfügbar"
