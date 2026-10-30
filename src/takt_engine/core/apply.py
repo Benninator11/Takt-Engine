@@ -7,7 +7,7 @@ from typing import Mapping
 
 from .config import create_backup
 from .limits import validate_values
-from .fan_curve import validate_fan_curve, render_fan_curve_config
+from .fan_curve import validate_fan_curve
 
 
 def apply_settings(config_path: Path, model_id: str, values: Mapping[str, int], arm_rollback: bool = False) -> tuple[Path, subprocess.CompletedProcess[str]]:
