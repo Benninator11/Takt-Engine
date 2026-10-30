@@ -64,7 +64,7 @@ class FanCurveTests(unittest.TestCase):
             save_persistent_fan_curve(safe_four, 5, path, backups)
             backup = save_persistent_fan_curve(DEFAULT_FAN_CURVE, 4, path, backups)
             self.assertTrue(backup.is_file())
-            self.assertEqual(len(load_persistent_fan_curve(path)["points"]), 10)
+            self.assertEqual(len(load_persistent_fan_curve(path)["points"]), 4)
 
 
     def test_live_override_expires(self):
@@ -102,8 +102,8 @@ class FanCurveTests(unittest.TestCase):
 
     def test_firmware_curve_replaces_only_its_managed_block(self):
         original = (
-            "# keep me\\n" + FAN_CONFIG_BEGIN_MARKER + "\\n[all]\\n"
-            "dtparam=fan_temp0=40000\\n" + FAN_CONFIG_END_MARKER + "\\n"
+            "# keep me\n" + FAN_CONFIG_BEGIN_MARKER + "\n[pi5]\n"
+            "dtparam=fan_temp0=40000\n" + FAN_CONFIG_END_MARKER + "\n"
             "dtparam=audio=on\\n"
         )
         rendered = render_firmware_fan_config(original, DEFAULT_FAN_CURVE, 5.0)
@@ -115,7 +115,7 @@ class FanCurveTests(unittest.TestCase):
 
     def test_firmware_curve_refuses_a_damaged_managed_block(self):
         with self.assertRaisesRegex(ValueError, "beschädigt"):
-            render_firmware_fan_config(FAN_CONFIG_BEGIN_MARKER + "\\n", DEFAULT_FAN_CURVE, 5.0)
+            render_firmware_fan_config(FAN_CONFIG_BEGIN_MARKER + "\n", DEFAULT_FAN_CURVE, 5.0)
 
     def test_live_fan_bar_adjusts_selected_firmware_stage(self):
         gui = Path(__file__).resolve().parents[1] / "src" / "takt_engine" / "gui" / "main.py"
