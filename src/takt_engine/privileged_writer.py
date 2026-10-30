@@ -141,12 +141,14 @@ def main() -> int:
                     )
                     if result.returncode != 0:
                         raise ValueError((result.stderr or result.stdout or "Lüfterdienst konnte nicht gestartet werden.").strip())
-                except Exception:
+                except Exception as exc:
                     if backup and backup.is_file():
                         shutil.copy2(backup, FAN_CURVE_CONFIG_PATH)
                     else:
                         FAN_CURVE_CONFIG_PATH.unlink(missing_ok=True)
-                    raise
+                    if isinstance(exc, ValueError):
+                        raise
+                    raise ValueError(f"Lüfterdienst konnte nicht gestartet werden: {exc}") from exc
                 print(f"Lüfterkurve dauerhaft gespeichert: {FAN_CURVE_CONFIG_PATH}")
                 print("Der systemd-Dienst wird bei jedem Systemstart automatisch gestartet.")
                 if backup:
