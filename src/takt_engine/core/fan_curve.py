@@ -1,23 +1,11 @@
 """Persistent, validated Raspberry Pi 5 fan-curve profiles and hwmon access."""
 from __future__ import annotations
 
-import json
 import math
 import re
-import tempfile
-import time
-from collections.abc import Mapping, Sequence
-from datetime import datetime
-from pathlib import Path
-import shutil
 import subprocess
-import os
-
-FAN_CURVE_CONFIG_PATH = Path("/etc/takt-engine/fan-curve.json")
-FAN_OVERRIDE_PATH = Path("/run/takt-engine/fan-override.json")
-FAN_BACKUP_DIR = Path("/var/lib/takt-engine/fan-backups")
-FAN_CURVE_FORMAT = "takt-engine-fan-curve"
-FAN_CURVE_SCHEMA_VERSION = 1
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 DEFAULT_FAN_CURVE = (
     {"temperature_c": 50.0, "speed_percent": 29},
@@ -27,8 +15,6 @@ DEFAULT_FAN_CURVE = (
 )
 DEFAULT_HYSTERESIS_C = 5.0
 MIN_FAN_SPEED_PERCENT = 29
-MIN_FAN_OVERRIDE_SECONDS = 5
-MAX_FAN_OVERRIDE_SECONDS = 300
 
 
 def _finite_number(value, name: str) -> float:
@@ -109,71 +95,6 @@ def validate_fan_curve(
         raise ValueError("Die Hysterese muss in 0,5-°C-Schritten eingestellt werden.")
 
     return {"points": normalized, "hysteresis_c": round(hysteresis, 1)}
-
-
-def _atomic_json_write(path: Path, payload: dict, mode: int = 0o644) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, mode)
-        os.replace(temporary, path)
-    except Exception:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-
-
-def load_persistent_fan_curve(path: Path = FAN_CURVE_CONFIG_PATH) -> dict:
-    """Load the persistent profile, falling back to a safe default if not saved yet."""
-    path = Path(path)
-    if not path.is_file():
-        return validate_fan_curve(DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Gespeicherte Lüfterkurve konnte nicht gelesen werden: {exc}") from exc
-    if not isinstance(payload, dict) or payload.get("format") != FAN_CURVE_FORMAT:
-        raise ValueError("Die gespeicherte Lüfterkurve besitzt ein unbekanntes Format.")
-    if payload.get("schema_version") != FAN_CURVE_SCHEMA_VERSION:
-        raise ValueError("Die gespeicherte Lüfterkurve hat eine nicht unterstützte Schema-Version.")
-    return validate_fan_curve(payload.get("points"), payload.get("hysteresis_c", DEFAULT_HYSTERESIS_C))
-
-
-def save_persistent_fan_curve(
-    points: Sequence[Mapping[str, object]],
-    hysteresis_c: object = DEFAULT_HYSTERESIS_C,
-    path: Path = FAN_CURVE_CONFIG_PATH,
-    backup_dir: Path = FAN_BACKUP_DIR,
-) -> Path | None:
-    """Back up the previous settings and write a validated persistent profile."""
-    normalized = validate_fan_curve(points, hysteresis_c)
-    path = Path(path)
-    backup_path = None
-    if path.is_file():
-        backup_dir = Path(backup_dir)
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        backup_path = backup_dir / f"fan-curve.{stamp}.json"
-        shutil.copy2(path, backup_path)
-
-    payload = {
-        "format": FAN_CURVE_FORMAT,
-        "schema_version": FAN_CURVE_SCHEMA_VERSION,
-        "points": normalized["points"],
-        "hysteresis_c": normalized["hysteresis_c"],
-        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-    }
-    _atomic_json_write(path, payload, 0o644)
-    return backup_path
 
 
 FAN_CONFIG_BEGIN_MARKER = "# BEGIN TAKT ENGINE PI5 FAN CURVE"
@@ -385,44 +306,3 @@ def read_soc_temperature(thermal_root: Path = Path("/sys/class/thermal")) -> flo
         return None
     match = re.search(r"temp=([0-9]+(?:\.[0-9]+)?)'C", result.stdout)
     return float(match.group(1)) if result.returncode == 0 and match else None
-
-
-def create_fan_override(
-    speed_percent: int,
-    duration_seconds: int = 60,
-    path: Path = FAN_OVERRIDE_PATH,
-) -> None:
-    if isinstance(speed_percent, bool) or not 29 <= int(speed_percent) <= 100:
-        raise ValueError("Die manuelle Lüfterleistung muss zwischen 29 % und 100 % liegen.")
-    if isinstance(duration_seconds, bool) or not MIN_FAN_OVERRIDE_SECONDS <= int(duration_seconds) <= MAX_FAN_OVERRIDE_SECONDS:
-        raise ValueError("Die manuelle Steuerung darf nur 5 bis 300 Sekunden dauern.")
-    payload = {
-        "speed_percent": int(speed_percent),
-        "expires_at": time.time() + int(duration_seconds),
-    }
-    _atomic_json_write(Path(path), payload, 0o600)
-
-
-def clear_fan_override(path: Path = FAN_OVERRIDE_PATH) -> None:
-    Path(path).unlink(missing_ok=True)
-
-
-def read_fan_override(path: Path = FAN_OVERRIDE_PATH, now: float | None = None) -> int | None:
-    path = Path(path)
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        speed = int(payload["speed_percent"])
-        expires_at = float(payload["expires_at"])
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-        path.unlink(missing_ok=True)
-        return None
-    current = time.time() if now is None else now
-    if not math.isfinite(expires_at) or expires_at <= current:
-        path.unlink(missing_ok=True)
-        return None
-    if not MIN_FAN_SPEED_PERCENT <= speed <= 100:
-        path.unlink(missing_ok=True)
-        return None
-    return speed
