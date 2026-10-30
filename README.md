@@ -1,8 +1,16 @@
 # Takt Engine
 
-**Version 1.2.4** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.3.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.3.0
+
+- Neuer Reiter **„Lüfterkurve“** für den Raspberry Pi 5 mit kompatiblem Firmware-Lüfter am offiziellen Lüfteranschluss.
+- Vier Temperaturstufen mit einstellbarer Lüfterleistung und gemeinsamer Hysterese. Die Kurve wird von der Raspberry-Pi-Firmware geregelt und funktioniert nach dem Neustart auch ohne laufende Takt Engine.
+- Sicherheitsgrenzen: Lüfterstart spätestens bei 55 °C, mindestens 2,5 °C Abstand zwischen Stufen, steigende Lüfterleistung und mindestens 95 % in der letzten Stufe bei höchstens 75 °C.
+- Vor dem Schreiben wird `config.txt` gesichert. Nur der eigene Takt-Engine-Lüfterblock wird ersetzt; andere Konfigurationseinträge bleiben erhalten.
+- Die Funktion ist auf den Raspberry Pi 5 begrenzt. Sie steuert keine beliebigen GPIO-, USB- oder externen Lüfter. Die Drehzahl wird – sofern der Treiber sie bereitstellt – weiterhin im Live-Monitor angezeigt.
 
 ## Änderungen in 1.2.4
 
