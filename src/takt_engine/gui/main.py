@@ -804,8 +804,8 @@ class TaktEngineWindow(Gtk.Window):
         if self.model_id != "pi5":
             note = Gtk.Label(label=(
                 "Die integrierte Lüfterkurven-Steuerung ist derzeit für den Raspberry Pi 5 "
-                "mit dem offiziellen Firmware-Lüfteranschluss vorgesehen. Für dieses Modell "
-                "wurde kein unterstützter Pi-5-Lüfteranschluss erkannt."
+                "mit angeschlossenem, kompatiblem Firmware-Lüfter vorgesehen. Ein vorhandener "
+                "Lüfter wird nicht automatisch auf seine Verkabelung geprüft."
             ))
             note.set_xalign(0)
             note.set_line_wrap(True)
