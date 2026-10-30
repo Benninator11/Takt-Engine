@@ -94,6 +94,14 @@ class FanCurveTests(unittest.TestCase):
             self.assertEqual((device / "pwm1_enable").read_text(), "2")
             self.assertEqual((device / "pwm1").read_text(), "128")
 
+    def test_live_fan_bar_is_adjustable(self):
+        gui = Path(__file__).resolve().parents[1] / "src" / "takt_engine" / "gui" / "main.py"
+        source = gui.read_text()
+        fan_ui = source[source.index("def _build_fan_curve_page"):source.index("def _set_fan_curve_rows")]
+        self.assertIn('self.fan_live_scale = Gtk.Scale.new_with_range', fan_ui)
+        self.assertIn('self.fan_live_scale.connect("value-changed"', fan_ui)
+        self.assertNotIn("Gtk.ProgressBar()", fan_ui)
+
     def test_hysteresis_and_critical_temperature(self):
         points = [
             {"temperature_c": 50, "speed_percent": 30},
