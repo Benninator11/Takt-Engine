@@ -15,15 +15,15 @@ class FanCurveTests(unittest.TestCase):
     def test_default_profile_has_ten_stages(self):
         self.assertEqual(len(validate_fan_curve(DEFAULT_FAN_CURVE)["points"]), 10)
 
-    def test_accepts_two_to_ten_stages(self):
-        self.assertEqual(len(validate_fan_curve(DEFAULT_FAN_CURVE[:2])["points"]), 2)
+    def test_accepts_four_to_ten_stages(self):
+        self.assertEqual(len(validate_fan_curve(DEFAULT_FAN_CURVE[:4])["points"]), 4)
         with self.assertRaises(ValueError):
-            validate_fan_curve(DEFAULT_FAN_CURVE[:1])
+            validate_fan_curve(DEFAULT_FAN_CURVE[:3])
         with self.assertRaises(ValueError):
             validate_fan_curve(DEFAULT_FAN_CURVE + (dict(DEFAULT_FAN_CURVE[-1]),))
 
     def test_rejects_late_start_and_falling_speed(self):
-        points = [dict(p) for p in DEFAULT_FAN_CURVE[:3]]
+        points = [dict(p) for p in DEFAULT_FAN_CURVE[:4]]
         points[0]["temperature_c"] = 56
         with self.assertRaises(ValueError):
             validate_fan_curve(points)
@@ -47,7 +47,8 @@ class FanCurveTests(unittest.TestCase):
         points = [
             {"temperature_c": 50, "speed_percent": 30},
             {"temperature_c": 60, "speed_percent": 60},
-            {"temperature_c": 70, "speed_percent": 95},
+            {"temperature_c": 67.5, "speed_percent": 75},
+            {"temperature_c": 75, "speed_percent": 100},
         ]
         speed, index = curve_speed_for_temperature(61, points, 5)
         self.assertEqual((speed, index), (60, 1))
