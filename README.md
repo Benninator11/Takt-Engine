@@ -1,8 +1,17 @@
 # Takt Engine
 
-**Version 1.5.2** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.5.3** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.5.3
+
+- Der Lüfter-Balken liest den Wert korrekt über die GTK-Scale-API; beim Ziehen wird die ausgewählte Stufe nicht neu aufgebaut oder zurückgesetzt.
+- Zielwert und gemessener Istwert werden in getrennten Labels angezeigt.
+- Ein echter GTK3-Smoke-Test löst den Scale-Handler aus; GitHub Actions installiert GTK3/PyGObject und startet den Test unter Xvfb.
+- Der privilegierte Helper wird ausschließlich aus der root-eigenen Installation unter `/opt/takt-engine` gestartet. Eine passende PolicyKit-Aktion gehört zur Installation.
+- Wiederherstellungssicherungen werden über ein geöffnetes Dateihandle geprüft, auf 256 KiB begrenzt und auf NUL-Bytes geprüft.
+- Nicht mehr verwendete PWM-Daemon-, Override- und JSON-Persistenzreste sowie doppelte Preset-Daten wurden entfernt. Die vier Firmware-Stufen und vorhandenen Schutzgrenzen bleiben unverändert.
 
 ## Änderungen in 1.5.2
 
@@ -25,20 +34,20 @@
 - Die Profilseite warnt jetzt direkt im Undervolting-Bereich vor möglichen Rechenfehlern und Abstürzen. Ein Profil wird weiterhin nur in die Regler geladen; die Änderung an `config.txt` erfolgt erst nach ausdrücklichem Anwenden und Bestätigen.
 - Die Profilbibliothek ist nicht mehr auf exakt zehn Einträge begrenzt.
 
-## Änderungen in 1.4.1
+## Änderungen in 1.4.1 (historisch; Live-Override in 1.5.1 entfernt)
 
-- Der bisherige reine Anzeige-Balken ist jetzt selbst der einstellbare Live-Schieberegler. Du musst nicht mehr zu einem zweiten Regler wechseln.
-- Im Ruhezustand zeigt der Balken den aktuellen PWM-Wert; der gemessene Drehzahlwert in RPM wird darunter getrennt angezeigt. Beim Ziehen bleibt dein ausgewählter Zielwert sichtbar.
-- Nach Auswahl eines Wertes kannst du ihn mit „Live-Leistung übernehmen“ zeitlich begrenzt aktivieren. „Automatik sofort“ gibt die Kontrolle direkt an die gespeicherte Temperaturkurve zurück.
-## Änderungen in 1.4.0
+- Der damalige Live-Schieberegler konnte einen zeitbegrenzten Override auslösen.
+- Der zeitbegrenzte Live-Override und die zugehörigen Schaltflächen wurden in 1.5.1 entfernt. In der aktuellen Version ändert der Balken ausschließlich den gespeicherten Zielwert einer der vier Firmware-Stufen.
 
-- Die Lüfterkurve kann jetzt aus **4 bis 10 Stufen** bestehen. Temperatur und Lüfterleistung sind je Stufe einstellbar; eine Kurvengrafik zeigt den Verlauf.
-- Die Kurve wird dauerhaft in `/etc/takt-engine/fan-curve.json` gespeichert. Beim ersten Speichern wird der Systemdienst `takt-engine-fan.service` aktiviert; er lädt das Profil auch nach jedem Neustart.
-- Der Live-Anzeigebalken ist zugleich ein direkt bedienbarer Schieberegler: Er zeigt im Ruhezustand den gemessenen PWM-Wert, lässt sich ziehen und kann die Lüfterleistung für 5 bis 300 Sekunden vorübergehend erhöhen. Er kann die aktuelle temperaturabhängige Mindestleistung nicht unterschreiten; nach Ablauf oder Neustart ist wieder die gespeicherte Kurve aktiv.
-- Sicherheitsverhalten: mindestens 29 % bei 50 °C, 49 % bei 60 °C, 69 % bei 67,5 °C und 95 % bei 75 °C, volle Leistung ab 80 °C und volle Leistung, falls die Temperatur nicht gelesen werden kann.
-- Animationen: rotierende Lüftergrafik, animiert einblendende Kurvenstufen, Live-Leistungsbalken, Kurvendiagramm und animierte Rückmeldung beim Speichern.
-- Die Steuerung verwendet die Linux-`pwm-fan`-Schnittstelle des kompatiblen Raspberry-Pi-5-Lüfters. Die native Firmware-Konfiguration unterstützt weiterhin nur vier `fan_tempN`-Stufen; ältere Vier-Stufen-Kurven können importiert werden.
-## Änderungen in 1.3.0
+## Änderungen in 1.4.0 (historisch; Userspace-Lüfterdaemon in 1.5.1 ersetzt)
+
+> **Historischer Hinweis:** Die damalige 4-bis-10-Stufen-JSON-Persistenz und der Userspace-Dienst `takt-engine-fan.service` wurden in 1.5.1 vollständig ersetzt. Auch die 5-bis-300-Sekunden-Overrides sind nicht mehr Teil der aktuellen Version. Seit 1.5.1 verwaltet die Raspberry-Pi-5-Firmware genau vier Stufen direkt in `config.txt`.
+
+- Historisch: Die Kurve konnte aus 4 bis 10 Stufen bestehen und wurde damals unter `/etc/takt-engine/fan-curve.json` gespeichert.
+- Historisch: Ein Userspace-Dienst lud dieses Profil nach jedem Neustart; Dienst und JSON-Persistenz wurden in 1.5.1 durch die native Firmwaresteuerung ersetzt.
+- Historisch: Der Balken konnte die Lüfterleistung über einen zeitlich begrenzten Override für 5 bis 300 Sekunden erhöhen. Diese Funktion wurde in 1.5.1 entfernt.
+- Die damalige Beschreibung der direkten PWM-Steuerung gehört zum alten Betriebsmodus; aktuell schreibt Takt Engine nur die native vierstufige Firmwarekurve in `config.txt`.
+## Änderungen in 1.3.0 (historisch; aktuelle Firmware-Konfiguration seit 1.5.1)
 
 - Neuer Reiter **„Lüfterkurve“** für den Raspberry Pi 5 mit kompatiblem Firmware-Lüfter am offiziellen Lüfteranschluss.
 - Vier Temperaturstufen mit einstellbarer Lüfterleistung und gemeinsamer Hysterese. Die Kurve wird von der Raspberry-Pi-Firmware geregelt und funktioniert nach dem Neustart auch ohne laufende Takt Engine.
@@ -108,7 +117,7 @@ Die native Lüfterkurve benötigt einen Raspberry Pi 5 mit kompatiblem Lüfter a
    takt-engine
    ```
 
-Der Installer richtet GTK3/PyGObject, `stress-ng`, `pkexec`, `polkitd` und `xdg-user-dirs` ein. Er installiert die App nach `/opt/takt-engine`, den Starter nach `/usr/local/bin/takt-engine` und die Desktop-Datei. Er installiert außerdem den root-eigenen Rollback-Helper und aktiviert den systemd-Timer; ohne ein explizit aktiviertes Testprofil nimmt dieser keine Änderung vor.
+Der Installer richtet GTK3/PyGObject, `stress-ng`, `pkexec`, `polkitd` und `xdg-user-dirs` ein. Er installiert außerdem die PolicyKit-Aktion für den festen Root-Helper und setzt dessen Ausführungsrecht nach der allgemeinen Dateiberechtigungs-Härtung wieder auf 0755. Er installiert die App nach `/opt/takt-engine`, den Starter nach `/usr/local/bin/takt-engine` und die Desktop-Datei. Er installiert außerdem den root-eigenen Rollback-Helper und aktiviert den systemd-Timer; ohne ein explizit aktiviertes Testprofil nimmt dieser keine Änderung vor.
 
 ### Voraussetzungen
 
@@ -136,7 +145,7 @@ Im Projektordner:
 bash scripts/test.sh
 ```
 
-Das Skript führt `unittest`-Tests, Python-Compile-/Syntaxprüfung sowie Shell-Syntaxprüfung durch. Es prüft auch die Rollback-Logik isoliert mit temporären Dateien. Die Tests brauchen weder GTK noch echte Pi-Hardware.
+Das Skript führt `unittest`-Tests, Python-Compile-/Syntaxprüfung sowie Shell-Syntaxprüfung durch. Der GTK3-Smoke-Test läuft, wenn PyGObject/GTK3 und ein Display verfügbar sind; in GitHub Actions stellt Xvfb das Display bereit. Ohne GTK3 wird nur dieser GUI-Test übersprungen. Die Tests benötigen keine echte Pi-Hardware.
 
 Alternativ:
 
