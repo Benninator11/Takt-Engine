@@ -9,10 +9,7 @@ PROFILE_CATEGORIES = {"standard", "performance", "undervolting"}
 
 def load_presets(path: Path | None = None) -> list[dict[str, Any]]:
     if path is None:
-        root = Path(__file__).resolve().parents[3]
-        project_copy = root / "data" / "presets.json"
-        package_copy = Path(__file__).resolve().parents[1] / "data" / "presets.json"
-        path = project_copy if project_copy.is_file() else package_copy
+        path = Path(__file__).resolve().parents[1] / "data" / "presets.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list) or not data:
         raise ValueError("presets.json muss mindestens ein Profil enthalten.")
