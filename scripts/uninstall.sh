@@ -10,10 +10,13 @@ if [[ -f /var/lib/takt-engine/rollback/pending.json ]]; then
 fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl disable --now takt-engine-rollback.timer >/dev/null 2>&1 || true
+  systemctl disable --now takt-engine-fan.service >/dev/null 2>&1 || true
   systemctl daemon-reload || true
 fi
 rm -f /etc/systemd/system/takt-engine-rollback.timer /etc/systemd/system/takt-engine-rollback.service
-rm -f /usr/local/libexec/takt-engine-rollback-check.py
+rm -f /etc/systemd/system/takt-engine-fan.service
+rm -f /usr/local/libexec/takt-engine-rollback-check.py /usr/local/libexec/takt-engine-fan-control.py
+rm -rf /run/takt-engine
 rm -rf /var/lib/takt-engine/rollback
 rm -f /usr/local/bin/takt-engine /usr/share/applications/takt-engine.desktop
 TARGET_USER="${SUDO_USER:-}"
@@ -36,4 +39,4 @@ if [[ -n "$TARGET_USER" && "$TARGET_USER" != "root" ]] && getent passwd "$TARGET
   rm -f "$DESKTOP_DIR/Takt-Engine.desktop"
 fi
 rm -rf /opt/takt-engine
-echo "Takt Engine wurde entfernt. Persönliche Backups unter ~/.config/takt-engine/backups bleiben erhalten."
+echo "Takt Engine wurde entfernt. Persönliche Backups unter ~/.config/takt-engine/backups und das Lüfterprofil unter /etc/takt-engine bleiben erhalten."
