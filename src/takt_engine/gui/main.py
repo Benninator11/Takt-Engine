@@ -857,6 +857,8 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_live_scale.connect("button-press-event", self._on_fan_slider_press)
         self.fan_live_scale.connect("button-release-event", self._on_fan_slider_release)
         self._fan_slider_dragging = False
+        self._fan_slider_has_manual_selection = False
+        self._fan_slider_syncing = False
         visual_text.pack_start(self.fan_live_scale, False, False, 0)
         self.fan_live_actual_label = Gtk.Label(label="Aktueller Messwert wird gelesen …")
         self.fan_live_actual_label.set_xalign(0)
@@ -1288,8 +1290,12 @@ class TaktEngineWindow(Gtk.Window):
             return
         value = self.fan_live_scale.get_value_as_int()
         duration = self.fan_override_duration.get_value_as_int() if hasattr(self, "fan_override_duration") else 60
-        if hasattr(self, "fan_live_actual_label"):
-            self.fan_live_actual_label.set_text(f"Ausgewählter Zielwert: {value} % · Dauer: {duration} Sekunden")
+        if not getattr(self, "_fan_slider_syncing", False):
+            self._fan_slider_has_manual_selection = True
+        if hasattr(self, "fan_live_actual_label") and getattr(self, "_fan_slider_has_manual_selection", False):
+            self.fan_live_actual_label.set_text(
+                f"Istwert wird separat angezeigt · Ausgewählter Zielwert: {value} % · {duration} Sekunden"
+            )
         if hasattr(self, "fan_curve_runtime_label"):
             self.fan_curve_runtime_label.set_tooltip_text(
                 f"Manueller Wert {value} % für {duration} Sekunden. Die Temperaturkurve bleibt Sicherheits-Untergrenze."
@@ -1313,6 +1319,8 @@ class TaktEngineWindow(Gtk.Window):
     def clear_fan_override_dialog(self, _button=None):
         try:
             result = clear_fan_override()
+            self._fan_slider_has_manual_selection = False
+            self._update_fan_hwmon_status()
             self.fan_curve_status_label.set_text("Automatik wieder aktiv: die gespeicherte Temperaturkurve steuert den Lüfter.")
             self.show_info((result.stdout or "Automatische Kurvensteuerung wiederhergestellt.").strip())
         except (OSError, RuntimeError, ValueError) as exc:
@@ -1343,9 +1351,13 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_curve_runtime_label.set_text(
             f"SoC: {temperature} · PWM: {percent_text} · Drehzahl: {rpm_text}"
         )
-        self.fan_live_actual_label.set_text(f"Ist: {percent_text} · {rpm_text}")
-        if not getattr(self, "_fan_slider_dragging", False):
-            self.fan_live_scale.set_value(state["speed_percent"])
+        self.fan_live_actual_label.set_text(f"Istwert: {percent_text} · {rpm_text}")
+        if not getattr(self, "_fan_slider_dragging", False) and not getattr(self, "_fan_slider_has_manual_selection", False):
+            self._fan_slider_syncing = True
+            try:
+                self.fan_live_scale.set_value(state["speed_percent"])
+            finally:
+                self._fan_slider_syncing = False
         try:
             curve = self._current_fan_curve_values()
             auto_floor = MIN_FAN_SPEED_PERCENT
