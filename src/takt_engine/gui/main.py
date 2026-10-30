@@ -25,7 +25,8 @@ from takt_engine.core.apply import apply_fan_curve, apply_settings, confirm_boot
 from takt_engine.core.config import parse_config_values, read_config, render_managed_config
 from takt_engine.core.detector import detect_hardware
 from takt_engine.core.fan_curve import (
-    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, parse_fan_curve_config, validate_fan_curve,
+    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, MIN_FAN_SPEED_PERCENT,
+    parse_fan_curve_config, validate_fan_curve,
 )
 from takt_engine.core.limits import (LIMITS, ValidationError, clock_gradient_color, clock_warning_zone,
                                             experimental_clock_warnings, validate_values)
@@ -853,7 +854,7 @@ class TaktEngineWindow(Gtk.Window):
             temperature = Gtk.SpinButton.new_with_range(40.0, 75.0, 0.5)
             temperature.set_digits(1)
             temperature.set_value(point["temperature_c"])
-            speed = Gtk.SpinButton.new_with_range(25, 100, 1)
+            speed = Gtk.SpinButton.new_with_range(MIN_FAN_SPEED_PERCENT[index], 100, 1)
             speed.set_digits(0)
             speed.set_value(point["speed_percent"])
             grid.attach(label, 0, row, 1, 1)
