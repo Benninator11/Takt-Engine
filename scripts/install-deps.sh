@@ -30,6 +30,7 @@ install -m 0644 "$PROJECT_DIR/README.md" "$INSTALL_DIR/README.md"
 install -m 0644 "$PROJECT_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
 
 # Persistent Raspberry Pi 5 fan controller and its systemd unit.
+install -d -m 0755 /usr/local/libexec
 install -m 0755 "$PROJECT_DIR/scripts/fan-control.py" /usr/local/libexec/takt-engine-fan-control.py
 install -m 0644 "$PROJECT_DIR/scripts/takt-engine-fan.service" /etc/systemd/system/takt-engine-fan.service
 install -d -m 0755 /etc/takt-engine /var/lib/takt-engine/fan-backups /run/takt-engine
