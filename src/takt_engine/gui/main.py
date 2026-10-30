@@ -1014,7 +1014,7 @@ class TaktEngineWindow(Gtk.Window):
 
             reveal = Gtk.Revealer()
             reveal.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
-            reveal.set_transition_duration(220)
+            reveal.set_transition_duration(220 if animate else 0)
             reveal.add(row_box)
             self.fan_curve_grid.attach(reveal, 0, index + 1, 3, 1)
             self.fan_curve_row_widgets.append({
@@ -1026,16 +1026,69 @@ class TaktEngineWindow(Gtk.Window):
             reveal.set_reveal_child(True)
 
         self.fan_curve_grid.show_all()
-        self._update_fan_stage_buttons()
         if hasattr(self, "fan_curve_chart"):
             self.fan_curve_chart.queue_draw()
+        self._refresh_fan_stage_control()
 
-    def _update_fan_stage_buttons(self):
-        if hasattr(self, "fan_add_stage_button"):
-            count = len(self.fan_curve_row_widgets)
-            self.fan_add_stage_button.set_sensitive(count < 10)
-            self.fan_remove_stage_button.set_sensitive(count > 4)
+    def _refresh_fan_stage_control(self):
+        if not hasattr(self, "fan_stage_combo") or not self.fan_curve_row_widgets:
+            return
+        try:
+            selected = self.fan_stage_combo.get_active()
+        except Exception:
+            selected = 0
+        if selected < 0 or selected >= len(self.fan_curve_row_widgets):
+            selected = 0
 
+        self._fan_slider_syncing = True
+        try:
+            self.fan_stage_combo.remove_all()
+            for index, row in enumerate(self.fan_curve_row_widgets):
+                temperature = row["temperature"].get_value()
+                self.fan_stage_combo.append_text(
+                    f"Stufe {index + 1} · ab {temperature:.1f} °C"
+                )
+            self.fan_stage_combo.set_active(selected)
+            speed = self.fan_curve_row_widgets[selected]["speed"].get_value_as_int()
+            self.fan_live_scale.set_value(speed)
+        finally:
+            self._fan_slider_syncing = False
+        self.fan_live_actual_label.set_text(
+            f"Zielwert Stufe {selected + 1}: "
+            f"{self.fan_curve_row_widgets[selected]['speed'].get_value_as_int()} %"
+        )
+
+    def _on_fan_stage_selected(self, combo):
+        if getattr(self, "_fan_slider_syncing", False):
+            return
+        index = combo.get_active()
+        if 0 <= index < len(self.fan_curve_row_widgets):
+            self._fan_slider_syncing = True
+            try:
+                self.fan_live_scale.set_value(
+                    self.fan_curve_row_widgets[index]["speed"].get_value()
+                )
+            finally:
+                self._fan_slider_syncing = False
+            self.fan_live_actual_label.set_text(
+                f"Zielwert Stufe {index + 1}: "
+                f"{self.fan_curve_row_widgets[index]['speed'].get_value_as_int()} %"
+            )
+
+    def _on_fan_stage_speed_changed(self, scale):
+        if getattr(self, "_fan_slider_syncing", False):
+            return
+        index = self.fan_stage_combo.get_active()
+        if not 0 <= index < len(self.fan_curve_row_widgets):
+            return
+        self._fan_slider_syncing = True
+        try:
+            self.fan_curve_row_widgets[index]["speed"].set_value(
+                scale.get_value_as_int()
+            )
+        finally:
+            self._fan_slider_syncing = False
+        self._on_fan_curve_changed()
     def _current_fan_curve_values(self):
         points = [
             {
@@ -1090,23 +1143,21 @@ class TaktEngineWindow(Gtk.Window):
     def reset_fan_curve(self, _button=None):
         self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=True)
         self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
-        self.fan_curve_status_label.set_text("Zehnstufige Standardkurve geladen. Sie wird erst beim Speichern dauerhaft aktiviert.")
+        self.fan_curve_status_label.set_text(
+            "Vierstufige Standardkurve geladen. Speichere sie und starte den Pi neu, damit sie aktiv wird."
+        )
 
     def load_fan_curve_from_config(self, _button=None, announce=True):
         try:
-            if FAN_CURVE_CONFIG_PATH.is_file():
-                curve = load_persistent_fan_curve()
-                label = "Dauerhaft gespeicherte Kurve geladen."
+            config_text = ""
+            if self.hardware.config_path and self.hardware.config_path.is_file():
+                config_text = read_config(self.hardware.config_path)
+            if "fan_temp" in config_text:
+                curve = parse_fan_curve_config(config_text)
+                label = "Firmware-Lüfterkurve aus config.txt geladen."
             else:
-                legacy = ""
-                if self.hardware.config_path and self.hardware.config_path.is_file():
-                    legacy = read_config(self.hardware.config_path)
-                if "fan_temp" in legacy:
-                    curve = parse_fan_curve_config(legacy)
-                    label = "Ältere vierstufige config.txt-Kurve importiert. Beim Speichern wird sie auf zehn Stufen erweiterbar."
-                else:
-                    curve = validate_fan_curve(DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C)
-                    label = "Noch keine eigene Kurve gespeichert. Standardkurve geladen."
+                curve = validate_fan_curve(DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C)
+                label = "Keine eigene Firmwarekurve gefunden. Standardkurve geladen."
             self._set_fan_curve_rows(curve["points"], animate=True)
             self.fan_hysteresis_spin.set_value(curve["hysteresis_c"])
             self.fan_curve_status_label.set_text(label)
@@ -1114,13 +1165,13 @@ class TaktEngineWindow(Gtk.Window):
                 self.show_info(label)
         except (OSError, ValueError, TypeError, KeyError) as exc:
             if announce:
-                self.show_error(f"Lüfterkurve konnte nicht gelesen werden: {exc}")
+                self.show_error(f"Firmwarekurve konnte nicht gelesen werden: {exc}")
             else:
-                self.fan_curve_status_label.set_text(f"Gespeicherte Kurve konnte nicht gelesen werden: {exc}")
+                self.fan_curve_status_label.set_text(f"Firmwarekurve konnte nicht gelesen werden: {exc}")
 
     def apply_fan_curve_dialog(self, _button=None):
-        if self.model_id != "pi5" or find_hwmon_fan() is None:
-            self.show_error("Kein kompatibler PWM-Lüfter erkannt. Prüfe den offiziellen Raspberry-Pi-5-Lüfteranschluss.")
+        if self.model_id != "pi5" or not self.hardware.config_path:
+            self.show_error("Die native Lüfterkurve ist nur auf einem erkannten Raspberry Pi 5 mit config.txt verfügbar.")
             return
         if self.benchmark_running:
             self.show_error("Bitte stoppe zuerst den laufenden Benchmark.")
@@ -1136,15 +1187,16 @@ class TaktEngineWindow(Gtk.Window):
             flags=Gtk.DialogFlags.MODAL,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
-            text="Lüfterkurve dauerhaft speichern?",
+            text="Firmware-Lüfterkurve speichern?",
         )
         dialog.format_secondary_text(
-            "Die Kurve wird unter /etc/takt-engine/fan-curve.json gespeichert. "
-            "Der Systemdienst startet sofort und lädt genau diese Kurve auch nach jedem Neustart. "
-            "Vorherige Einstellungen werden gesichert."
+            "Takt Engine erstellt zuerst eine Sicherung und schreibt die vier nativen "
+            "fan_temp-Stufen in config.txt. Danach übernimmt die Raspberry-Pi-Firmware "
+            "die Lüftersteuerung. Die Änderung wird erst nach einem Neustart aktiv. "
+            "Der alte konkurrierende Takt-Engine-PWM-Dienst wird deaktiviert."
         )
         dialog.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Speichern und aktivieren", Gtk.ResponseType.OK)
+        dialog.add_button("Speichern", Gtk.ResponseType.OK)
         response = dialog.run()
         dialog.destroy()
         if response != Gtk.ResponseType.OK:
@@ -1153,11 +1205,16 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_curve_apply_button.set_sensitive(False)
         self._start_fan_save_animation()
         try:
-            result = apply_fan_curve(curve["points"], curve["hysteresis_c"])
-            self.fan_curve_status_label.set_text(
-                f"Gespeichert: {len(curve['points'])} Stufen · Systemdienst aktiv · wird nach jedem Neustart geladen."
+            backup, result = apply_fan_curve(
+                self.hardware.config_path, curve["points"], curve["hysteresis_c"]
             )
-            self.show_info((result.stdout or "Lüfterkurve gespeichert und aktiviert.").strip())
+            self.fan_curve_status_label.set_text(
+                "Firmwarekurve in config.txt gespeichert · Neustart erforderlich."
+            )
+            self.show_info(
+                (result.stdout or "Firmware-Lüfterkurve gespeichert.").strip()
+                + f"\n\nSicherung: {backup}\n\nBitte den Raspberry Pi neu starten."
+            )
             self._fan_status_pulse()
         except (OSError, RuntimeError, ValueError) as exc:
             self.show_error(str(exc))
