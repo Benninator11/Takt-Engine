@@ -37,9 +37,10 @@ def _write_pwm(device: Path, speed_percent: int) -> None:
     pwm_path = device / "pwm1"
     try:
         mode = int(enable_path.read_text(encoding="ascii").strip())
-        if mode == 0:
-            # Mode 1 permits PWM output while retaining the regulator for 0%.
-            enable_path.write_text("1", encoding="ascii")
+        if mode != 2:
+            # pwm-fan mode 2 keeps PWM output and the fan regulator enabled.
+            # Mode 1 disables the PWM output, so it must not be used here.
+            enable_path.write_text("2", encoding="ascii")
         value = max(0, min(255, int(round(speed_percent * 255 / 100))))
         pwm_path.write_text(str(value), encoding="ascii")
     except (OSError, ValueError) as exc:
