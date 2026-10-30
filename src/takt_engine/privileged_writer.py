@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from takt_engine.core.config import read_config, render_managed_config, write_config_atomically  # noqa: E402
 from takt_engine.core.limits import ValidationError, validate_values  # noqa: E402
+from takt_engine.core.fan_curve import render_fan_curve_config  # noqa: E402
 
 ALLOWED_CONFIG_PATHS = {Path("/boot/firmware/config.txt"), Path("/boot/config.txt")}
 ROLLBACK_DIR = Path("/var/lib/takt-engine/rollback")
@@ -93,6 +94,7 @@ def main() -> int:
     parser.add_argument("--model", choices=("pi4", "pi5"))
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--values", help="JSON-Objekt mit freigegebenen Werten")
+    operation.add_argument("--fan-curve", help="JSON-Lüfterkurve für den Raspberry Pi 5")
     operation.add_argument("--restore-backup", help="Pfad zu einer Takt-Engine-Sicherung")
     operation.add_argument("--confirm-rollback", action="store_true", help="Teststart bestätigen und automatischen Rollback deaktivieren")
     parser.add_argument("--arm-rollback", action="store_true", help="Vorherige Konfiguration als Teststart-Sicherung hinterlegen")
@@ -131,6 +133,23 @@ def main() -> int:
             return 0
         if ROLLBACK_PENDING.exists():
             raise ValueError("Ein sicheres Testprofil wartet noch auf Bestätigung oder Rückkehr. Weitere Änderungen sind bis dahin gesperrt.")
+        if args.fan_curve is not None:
+            if args.model != "pi5":
+                raise ValueError("Die integrierte Lüfterkurve wird nur für den Raspberry Pi 5 unterstützt.")
+            if args.arm_rollback:
+                raise ValueError("Die Lüfterkurve kann nicht mit dem Takt-Testprofil-Rollback kombiniert werden.")
+            payload = json.loads(args.fan_curve)
+            if not isinstance(payload, dict):
+                raise ValueError("Die Lüfterkurve muss als JSON-Objekt übergeben werden.")
+            current = read_config(path)
+            updated = render_fan_curve_config(
+                current,
+                payload.get("points"),
+                payload.get("hysteresis_c", 5.0),
+            )
+            write_config_atomically(path, updated)
+            print(f"Lüfterkurve für den Raspberry Pi 5 wurde in {path} gespeichert. Ein Neustart ist erforderlich.")
+            return 0
         values = json.loads(args.values)
         if not isinstance(values, dict):
             raise ValueError("Werte müssen ein JSON-Objekt sein.")
