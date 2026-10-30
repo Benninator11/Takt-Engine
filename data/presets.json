@@ -4,89 +4,288 @@
     "name": "Pi 4 – Standard",
     "description": "Referenzprofil mit Standardtakt und ohne Spannungs-Offset.",
     "model": "pi4",
-    "values": {"arm_freq": 1500, "v3d_freq": 500, "core_freq": 500, "over_voltage_delta": 0},
+    "values": {
+      "arm_freq": 1500,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": 0
+    },
     "warning": "Referenzprofil. Bei neueren Pi-4-Revisionen kann die Standard-CPU-Frequenz ab Werk höher liegen.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "standard"
   },
   {
     "id": "pi4-cool",
     "name": "Pi 4 – Kühl",
     "description": "CPU leicht angehoben; Grafik- und Core-Takt bleiben auf 500 MHz.",
     "model": "pi4",
-    "values": {"arm_freq": 1700, "v3d_freq": 500, "core_freq": 500, "over_voltage_delta": 0},
+    "values": {
+      "arm_freq": 1700,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": 0
+    },
     "warning": "Stabilität und Temperatur nach dem Neustart prüfen.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "standard"
   },
   {
     "id": "pi4-cpu",
     "name": "Pi 4 – CPU moderat",
     "description": "CPU 1,8 GHz, andere Takte unverändert.",
     "model": "pi4",
-    "values": {"arm_freq": 1800, "v3d_freq": 500, "core_freq": 500, "over_voltage_delta": 0},
+    "values": {
+      "arm_freq": 1800,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": 0
+    },
     "warning": "1,8 GHz ist nicht auf jeder Pi-4-Revision ein Übertaktungsschritt; Kühlung und Netzteil bleiben wichtig.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "performance"
   },
   {
     "id": "pi4-balanced",
     "name": "Pi 4 – Ausgewogen",
     "description": "CPU 1,8 GHz und leicht erhöhter V3D-Takt.",
     "model": "pi4",
-    "values": {"arm_freq": 1800, "v3d_freq": 550, "core_freq": 500, "over_voltage_delta": 10000},
+    "values": {
+      "arm_freq": 1800,
+      "v3d_freq": 550,
+      "core_freq": 500,
+      "over_voltage_delta": 10000
+    },
     "warning": "Erhöhte Spannung kann zusätzliche Wärme erzeugen. Erst CPU und Kühlung separat testen.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "performance"
   },
   {
     "id": "pi4-advanced",
     "name": "Pi 4 – Erweitert",
     "description": "Höherer CPU-Takt mit begrenztem Spannungs-Offset.",
     "model": "pi4",
-    "values": {"arm_freq": 1900, "v3d_freq": 550, "core_freq": 600, "over_voltage_delta": 25000},
+    "values": {
+      "arm_freq": 1900,
+      "v3d_freq": 550,
+      "core_freq": 600,
+      "over_voltage_delta": 25000
+    },
     "warning": "Fortgeschrittenes Profil, keine Stabilitätsgarantie. Nur mit guter Kühlung und nach Datensicherung verwenden.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "performance"
   },
   {
     "id": "pi5-stock",
     "name": "Pi 5 – Standard",
     "description": "Standard-CPU-/V3D-Takt und automatische Spannungsregelung.",
     "model": "pi5",
-    "values": {"arm_freq": 2400, "v3d_freq": 960, "over_voltage_delta": 0},
+    "values": {
+      "arm_freq": 2400,
+      "v3d_freq": 960,
+      "over_voltage_delta": 0
+    },
     "warning": "Referenzprofil; dieses Profil setzt die genannten Werte explizit.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "standard"
   },
   {
     "id": "pi5-balanced",
     "name": "Pi 5 – Ausgewogen",
     "description": "Kleiner CPU-Schritt, V3D bleibt unverändert.",
     "model": "pi5",
-    "values": {"arm_freq": 2500, "v3d_freq": 960, "over_voltage_delta": 0},
+    "values": {
+      "arm_freq": 2500,
+      "v3d_freq": 960,
+      "over_voltage_delta": 0
+    },
     "warning": "Auch kleine Taktänderungen müssen auf dem konkreten Gerät getestet werden.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "standard"
   },
   {
     "id": "pi5-cpu",
     "name": "Pi 5 – CPU moderat",
     "description": "CPU-Takt 2,6 GHz, V3D unverändert und kleiner Spannungs-Offset.",
     "model": "pi5",
-    "values": {"arm_freq": 2600, "v3d_freq": 960, "over_voltage_delta": 10000},
+    "values": {
+      "arm_freq": 2600,
+      "v3d_freq": 960,
+      "over_voltage_delta": 10000
+    },
     "warning": "Kühlung erforderlich; bei Instabilität zum Standardprofil zurückkehren.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "performance"
   },
   {
     "id": "pi5-graphics",
     "name": "Pi 5 – CPU + Grafik",
     "description": "CPU 2,6 GHz und V3D 980 MHz.",
     "model": "pi5",
-    "values": {"arm_freq": 2600, "v3d_freq": 980, "over_voltage_delta": 10000},
+    "values": {
+      "arm_freq": 2600,
+      "v3d_freq": 980,
+      "over_voltage_delta": 10000
+    },
     "warning": "CPU und V3D gemeinsam zu ändern erschwert die Fehlersuche; bei Problemen einzeln testen.",
-    "reboot_required": true
+    "reboot_required": true,
+    "category": "performance"
   },
   {
     "id": "pi5-advanced",
     "name": "Pi 5 – Erweitert",
     "description": "Höheres, begrenztes Profil für gut gekühlte Systeme.",
     "model": "pi5",
-    "values": {"arm_freq": 2700, "v3d_freq": 1000, "over_voltage_delta": 25000},
+    "values": {
+      "arm_freq": 2700,
+      "v3d_freq": 1000,
+      "over_voltage_delta": 25000
+    },
     "warning": "Fortgeschrittenes Profil, keine Stabilitätsgarantie. Vorher Sicherung erstellen und Stabilität testen.",
+    "reboot_required": true,
+    "category": "performance"
+  },
+  {
+    "id": "pi4-cpu-performance",
+    "name": "Pi 4 – CPU-Leistung 1,9 GHz",
+    "description": "CPU auf 1.900 MHz; V3D und Core bleiben bei 500 MHz.",
+    "model": "pi4",
+    "category": "performance",
+    "values": {
+      "arm_freq": 1900,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": 0
+    },
+    "warning": "Übertaktung: nur mit geeigneter Kühlung testen. Stabilität und Temperatur prüfen.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi4-graphics-performance",
+    "name": "Pi 4 – Grafik-Leistung",
+    "description": "CPU 1.800 MHz, V3D 600 MHz und Core 600 MHz.",
+    "model": "pi4",
+    "category": "performance",
+    "values": {
+      "arm_freq": 1800,
+      "v3d_freq": 600,
+      "core_freq": 600,
+      "over_voltage_delta": 0
+    },
+    "warning": "Erhöhter Grafik- und Core-Takt kann je nach Boardrevision instabil sein.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi4-undervolt-5",
+    "name": "Pi 4 – Undervolting −5 mV",
+    "description": "Standardtakte mit kleinem negativem SoC-/DVFS-Spannungs-Offset von −5.000 µV.",
+    "model": "pi4",
+    "category": "undervolting",
+    "values": {
+      "arm_freq": 1500,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": -5000
+    },
+    "warning": "Experimentelles Testprofil. Auch ein kleiner negativer Offset kann Fehler oder Abstürze verursachen.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi4-undervolt-10",
+    "name": "Pi 4 – Undervolting −10 mV",
+    "description": "Standardtakte mit negativem SoC-/DVFS-Spannungs-Offset von −10.000 µV.",
+    "model": "pi4",
+    "category": "undervolting",
+    "values": {
+      "arm_freq": 1500,
+      "v3d_freq": 500,
+      "core_freq": 500,
+      "over_voltage_delta": -10000
+    },
+    "warning": "Stärkerer Testschritt. Nur einzeln testen und bei Auffälligkeiten sofort auf 0 µV zurückstellen.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-cpu-performance",
+    "name": "Pi 5 – CPU-Leistung 2,8 GHz",
+    "description": "CPU bis 2.800 MHz, V3D auf Standardwert und kein zusätzlicher Spannungs-Offset.",
+    "model": "pi5",
+    "category": "performance",
+    "values": {
+      "arm_freq": 2800,
+      "v3d_freq": 960,
+      "over_voltage_delta": 0
+    },
+    "warning": "Am oberen Ende der konservativen App-Empfehlung. Gute Kühlung und ausreichendes Netzteil vorausgesetzt; Stabilität prüfen.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-gaming-performance",
+    "name": "Pi 5 – Gaming / 3D",
+    "description": "CPU 2.700 MHz und V3D 1.000 MHz für eine ausgewogenere CPU-/Grafiklast.",
+    "model": "pi5",
+    "category": "performance",
+    "values": {
+      "arm_freq": 2700,
+      "v3d_freq": 1000,
+      "over_voltage_delta": 0
+    },
+    "warning": "CPU und Grafik werden gemeinsam geändert. Bei Problemen einzeln testen und zum Standardprofil zurückkehren.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-graphics-performance",
+    "name": "Pi 5 – Grafik-Fokus",
+    "description": "CPU 2.600 MHz und V3D 1.000 MHz; Schwerpunkt auf dem 3D-Grafiktakt.",
+    "model": "pi5",
+    "category": "performance",
+    "values": {
+      "arm_freq": 2600,
+      "v3d_freq": 1000,
+      "over_voltage_delta": 0
+    },
+    "warning": "V3D liegt an der konservativen App-Empfehlungsmarke. Temperatur und Stabilität beobachten.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-balanced-performance",
+    "name": "Pi 5 – Allround 2,75 GHz",
+    "description": "CPU 2.750 MHz und V3D 980 MHz als Zwischenstufe zwischen Standard und CPU-Leistungsprofil.",
+    "model": "pi5",
+    "category": "performance",
+    "values": {
+      "arm_freq": 2750,
+      "v3d_freq": 980,
+      "over_voltage_delta": 0
+    },
+    "warning": "Nicht auf jedem Board gleich stabil. Keine zusätzliche Spannung wird angehoben.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-undervolt-5",
+    "name": "Pi 5 – Undervolting −5 mV",
+    "description": "Pi-5-Standardtakte mit kleinem negativem SoC-/DVFS-Spannungs-Offset von −5.000 µV.",
+    "model": "pi5",
+    "category": "undervolting",
+    "values": {
+      "arm_freq": 2400,
+      "v3d_freq": 960,
+      "over_voltage_delta": -5000
+    },
+    "warning": "Experimentelles Testprofil. Der Offset betrifft den DVFS-SoC-Spannungswert, nicht nur die CPU. Stabilität ist nicht garantiert.",
+    "reboot_required": true
+  },
+  {
+    "id": "pi5-undervolt-10",
+    "name": "Pi 5 – Undervolting −10 mV",
+    "description": "Pi-5-Standardtakte mit negativem SoC-/DVFS-Spannungs-Offset von −10.000 µV.",
+    "model": "pi5",
+    "category": "undervolting",
+    "values": {
+      "arm_freq": 2400,
+      "v3d_freq": 960,
+      "over_voltage_delta": -10000
+    },
+    "warning": "Stärkerer Testschritt mit höherem Instabilitätsrisiko. Nur einzeln testen; bei Fehlern auf 0 µV zurückstellen.",
     "reboot_required": true
   }
 ]
