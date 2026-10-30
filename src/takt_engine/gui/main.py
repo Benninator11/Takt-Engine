@@ -912,6 +912,11 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_live_scale.connect("value-changed", self._on_fan_stage_speed_changed)
         visual_text.pack_start(self.fan_live_scale, False, False, 0)
 
+        self.fan_live_target_label = Gtk.Label(label="Zielwert Stufe 1: 29 %")
+        self.fan_live_target_label.set_xalign(0)
+        self.fan_live_target_label.get_style_context().add_class("dim-label")
+        visual_text.pack_start(self.fan_live_target_label, False, False, 0)
+
         self.fan_live_actual_label = Gtk.Label(label="Istwert: PWM/RPM wird gelesen …")
         self.fan_live_actual_label.set_xalign(0)
         self.fan_live_actual_label.get_style_context().add_class("dim-label")
@@ -1053,7 +1058,7 @@ class TaktEngineWindow(Gtk.Window):
             self.fan_live_scale.set_value(speed)
         finally:
             self._fan_slider_syncing = False
-        self.fan_live_actual_label.set_text(
+        self.fan_live_target_label.set_text(
             f"Zielwert Stufe {selected + 1}: "
             f"{self.fan_curve_row_widgets[selected]['speed'].get_value_as_int()} %"
         )
@@ -1070,7 +1075,7 @@ class TaktEngineWindow(Gtk.Window):
                 )
             finally:
                 self._fan_slider_syncing = False
-            self.fan_live_actual_label.set_text(
+            self.fan_live_target_label.set_text(
                 f"Zielwert Stufe {index + 1}: "
                 f"{self.fan_curve_row_widgets[index]['speed'].get_value_as_int()} %"
             )
@@ -1081,14 +1086,14 @@ class TaktEngineWindow(Gtk.Window):
         index = self.fan_stage_combo.get_active()
         if not 0 <= index < len(self.fan_curve_row_widgets):
             return
+        value = int(round(scale.get_value()))
         self._fan_slider_syncing = True
         try:
-            self.fan_curve_row_widgets[index]["speed"].set_value(
-                scale.get_value_as_int()
-            )
+            self.fan_curve_row_widgets[index]["speed"].set_value(value)
         finally:
             self._fan_slider_syncing = False
-        self._on_fan_curve_changed()
+        self.fan_live_target_label.set_text(f"Zielwert Stufe {index + 1}: {value} %")
+
     def _current_fan_curve_values(self):
         points = [
             {
@@ -1098,47 +1103,6 @@ class TaktEngineWindow(Gtk.Window):
             for row in self.fan_curve_row_widgets
         ]
         return validate_fan_curve(points, self.fan_hysteresis_spin.get_value())
-
-    def add_fan_curve_stage(self, _button=None):
-        try:
-            curve = self._current_fan_curve_values()
-        except ValueError as exc:
-            self.show_error("Bitte korrigiere zuerst die vorhandenen Stufen.\n\n" + str(exc))
-            return
-        points = [dict(point) for point in curve["points"]]
-        if len(points) >= 10:
-            return
-        previous = points[-2]
-        last = points[-1]
-        temperature = round(((previous["temperature_c"] + last["temperature_c"]) / 2) * 2) / 2
-        if temperature - previous["temperature_c"] < 0.5 or last["temperature_c"] - temperature < 0.5:
-            self.show_error("Zwischen den letzten Stufen ist nicht genug Platz für eine weitere Temperaturstufe.")
-            return
-        speed = int(round((previous["speed_percent"] + last["speed_percent"]) / 2))
-        speed = max(previous["speed_percent"], min(last["speed_percent"], speed))
-        points.insert(-1, {"temperature_c": temperature, "speed_percent": speed})
-        self._set_fan_curve_rows(points, animate=True)
-
-    def remove_fan_curve_stage(self, _button=None):
-        if len(self.fan_curve_row_widgets) <= 4:
-            return
-        try:
-            curve = self._current_fan_curve_values()
-        except ValueError as exc:
-            self.show_error("Bitte korrigiere zuerst die Lüfterkurve.\n\n" + str(exc))
-            return
-
-        points = [dict(point) for point in curve["points"]]
-        for remove_index in range(len(points) - 2, 0, -1):
-            candidate = points[:remove_index] + points[remove_index + 1:]
-            try:
-                validate_fan_curve(candidate, curve["hysteresis_c"])
-            except ValueError:
-                continue
-            self._set_fan_curve_rows(candidate, animate=True)
-            return
-
-        self.show_info("Die übrigen Stufen werden für die vier Temperatur-Sicherheitsgrenzen benötigt.")
 
     def reset_fan_curve(self, _button=None):
         self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=True)
