@@ -1,14 +1,19 @@
 # Takt Engine
 
-**Version 1.4.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.4.1** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
 
+## Änderungen in 1.4.1
+
+- Der bisherige reine Anzeige-Balken ist jetzt selbst der einstellbare Live-Schieberegler. Du musst nicht mehr zu einem zweiten Regler wechseln.
+- Im Ruhezustand zeigt der Balken den aktuellen PWM-Wert; der gemessene Drehzahlwert in RPM wird darunter getrennt angezeigt. Beim Ziehen bleibt dein ausgewählter Zielwert sichtbar.
+- Nach Auswahl eines Wertes kannst du ihn mit „Live-Leistung übernehmen“ zeitlich begrenzt aktivieren. „Automatik sofort“ gibt die Kontrolle direkt an die gespeicherte Temperaturkurve zurück.
 ## Änderungen in 1.4.0
 
 - Die Lüfterkurve kann jetzt aus **4 bis 10 Stufen** bestehen. Temperatur und Lüfterleistung sind je Stufe einstellbar; eine Kurvengrafik zeigt den Verlauf.
 - Die Kurve wird dauerhaft in `/etc/takt-engine/fan-curve.json` gespeichert. Beim ersten Speichern wird der Systemdienst `takt-engine-fan.service` aktiviert; er lädt das Profil auch nach jedem Neustart.
-- Ein Live-Regler kann die Lüfterleistung für 5 bis 300 Sekunden vorübergehend erhöhen. Er kann die aktuelle temperaturabhängige Mindestleistung nicht unterschreiten; nach Ablauf oder Neustart ist wieder die gespeicherte Kurve aktiv.
+- Der Live-Anzeigebalken ist zugleich ein direkt bedienbarer Schieberegler: Er zeigt im Ruhezustand den gemessenen PWM-Wert, lässt sich ziehen und kann die Lüfterleistung für 5 bis 300 Sekunden vorübergehend erhöhen. Er kann die aktuelle temperaturabhängige Mindestleistung nicht unterschreiten; nach Ablauf oder Neustart ist wieder die gespeicherte Kurve aktiv.
 - Sicherheitsverhalten: mindestens 29 % bei 50 °C, 49 % bei 60 °C, 69 % bei 67,5 °C und 95 % bei 75 °C, volle Leistung ab 80 °C und volle Leistung, falls die Temperatur nicht gelesen werden kann.
 - Animationen: rotierende Lüftergrafik, animiert einblendende Kurvenstufen, Live-Leistungsbalken, Kurvendiagramm und animierte Rückmeldung beim Speichern.
 - Die Steuerung verwendet die Linux-`pwm-fan`-Schnittstelle des kompatiblen Raspberry-Pi-5-Lüfters. Die native Firmware-Konfiguration unterstützt weiterhin nur vier `fan_tempN`-Stufen; ältere Vier-Stufen-Kurven können importiert werden.
