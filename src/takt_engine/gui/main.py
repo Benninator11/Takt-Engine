@@ -525,7 +525,7 @@ class TaktEngineWindow(Gtk.Window):
 
     def _build_presets_page(self):
         page = self._make_page("Voreinstellungen")
-        note = Gtk.Label(label="Ein Profil übernimmt zunächst nur die Werte in die Regler. Zum Schreiben auf die Boot-Partition danach ausdrücklich „Änderungen anwenden“ wählen.")
+        note = Gtk.Label(label="Wähle ein Profil aus Standard, Leistung oder Undervolting. Es übernimmt zunächst nur Werte in die Regler; config.txt wird erst nach „Änderungen anwenden“ und deiner Bestätigung geändert.")
         note.set_xalign(0)
         note.set_line_wrap(True)
         page.pack_start(note, False, False, 0)
@@ -538,29 +538,74 @@ class TaktEngineWindow(Gtk.Window):
         matches = [preset for preset in self.presets if preset.get("model") == self.model_id]
         if not self.limits:
             matches = self.presets
-        for preset in matches:
-            row = Gtk.ListBoxRow()
-            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-            content.set_border_width(10)
-            row.add(content)
-            title = Gtk.Label()
-            title.set_markup(f"<b>{GLib.markup_escape_text(preset['name'])}</b>")
-            title.set_xalign(0)
-            content.pack_start(title, False, False, 0)
-            desc = Gtk.Label(label=preset["description"])
-            desc.set_xalign(0)
-            desc.set_line_wrap(True)
-            content.pack_start(desc, False, False, 0)
-            warning = Gtk.Label(label="Hinweis: " + preset["warning"])
-            warning.set_xalign(0)
-            warning.set_line_wrap(True)
-            warning.get_style_context().add_class("dim-label")
-            content.pack_start(warning, False, False, 0)
-            select_button = Gtk.Button(label="Profil in Regler laden")
-            select_button.set_halign(Gtk.Align.START)
-            select_button.connect("clicked", self.load_preset, preset)
-            content.pack_start(select_button, False, False, 0)
-            listbox.add(row)
+        category_titles = {
+            "standard": "Standard & Alltag",
+            "performance": "Mehr Leistung",
+            "undervolting": "Undervolting",
+        }
+        for category in ("standard", "performance", "undervolting"):
+            grouped_profiles = [
+                preset for preset in matches
+                if preset.get("category", "performance") == category
+            ]
+            if not grouped_profiles:
+                continue
+
+            section_row = Gtk.ListBoxRow()
+            section_row.set_selectable(False)
+            section_row.set_activatable(False)
+            section_label = Gtk.Label()
+            section_label.set_markup(
+                f"<span size='large' weight='bold'>{GLib.markup_escape_text(category_titles[category])}</span>"
+            )
+            section_label.set_xalign(0)
+            section_label.set_margin_start(10)
+            section_label.set_margin_top(10)
+            section_label.set_margin_bottom(4)
+            section_row.add(section_label)
+            listbox.add(section_row)
+
+            if category == "undervolting":
+                info_row = Gtk.ListBoxRow()
+                info_row.set_selectable(False)
+                info_row.set_activatable(False)
+                info_label = Gtk.Label(label=(
+                    "Negative Spannungs-Offsets sind experimentell. Auch kleine Schritte können "
+                    "Rechenfehler oder Abstürze verursachen. Profile einzeln testen und bei Problemen "
+                    "auf 0 µV zurückstellen."
+                ))
+                info_label.set_xalign(0)
+                info_label.set_line_wrap(True)
+                info_label.set_margin_start(10)
+                info_label.set_margin_end(10)
+                info_label.set_margin_bottom(6)
+                info_label.get_style_context().add_class("caution")
+                info_row.add(info_label)
+                listbox.add(info_row)
+
+            for preset in grouped_profiles:
+                row = Gtk.ListBoxRow()
+                content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                content.set_border_width(10)
+                row.add(content)
+                title = Gtk.Label()
+                title.set_markup(f"<b>{GLib.markup_escape_text(preset['name'])}</b>")
+                title.set_xalign(0)
+                content.pack_start(title, False, False, 0)
+                desc = Gtk.Label(label=preset["description"])
+                desc.set_xalign(0)
+                desc.set_line_wrap(True)
+                content.pack_start(desc, False, False, 0)
+                warning = Gtk.Label(label="Hinweis: " + preset["warning"])
+                warning.set_xalign(0)
+                warning.set_line_wrap(True)
+                warning.get_style_context().add_class("dim-label")
+                content.pack_start(warning, False, False, 0)
+                select_button = Gtk.Button(label="Profil in Regler laden")
+                select_button.set_halign(Gtk.Align.START)
+                select_button.connect("clicked", self.load_preset, preset)
+                content.pack_start(select_button, False, False, 0)
+                listbox.add(row)
         if not matches:
             empty = Gtk.Label(label="Kein passendes Profil gefunden. Bitte unterstützten Raspberry Pi 4 oder Pi 5 verwenden.")
             empty.set_line_wrap(True)
