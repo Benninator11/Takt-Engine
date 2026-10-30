@@ -1,8 +1,13 @@
 # Takt Engine
 
-**Version 1.5.1** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.5.2** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.5.2
+
+- Die Umstellung auf die native Firmwaresteuerung stoppt den alten Takt-Engine-PWM-Dienst jetzt mit Statusprüfung. Die Kurve wird nicht gespeichert, solange ein alter Prozess noch aktiv ist oder sich nicht sauber beenden lässt.
+- Der Installer beendet den alten Dienst ebenfalls vor dem Entfernen seiner Dateien. Ein fehlgeschlagener Stopp wird nicht stillschweigend ignoriert.
 
 ## Änderungen in 1.5.1
 
