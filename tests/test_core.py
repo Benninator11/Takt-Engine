@@ -1,4 +1,6 @@
+import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -445,14 +447,49 @@ class RuntimeParseTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
-    def test_installer_uses_split_polkit_packages_for_debian_trixie(self):
-        installer = Path(__file__).resolve().parents[1] / "scripts" / "install-deps.sh"
+    def test_installer_uses_split_polkit_packages_and_installs_helper_policy(self):
+        root = Path(__file__).resolve().parents[1]
+        installer = root / "scripts" / "install-deps.sh"
         content = installer.read_text()
         install_lines = [line for line in content.splitlines() if line.strip().startswith("apt-get install")]
         self.assertEqual(len(install_lines), 1)
         self.assertIn("pkexec", install_lines[0])
         self.assertIn("polkitd", install_lines[0])
         self.assertNotIn("policykit-1", install_lines[0])
+        self.assertIn('install -m 0644 "$PROJECT_DIR/polkit/org.benninator.takt-engine.policy"', content)
+        self.assertIn('chmod 0755 "$INSTALL_DIR/src/takt_engine/privileged_writer.py"', content)
+
+        policy = root / "polkit" / "org.benninator.takt-engine.policy"
+        self.assertIn("/opt/takt-engine/src/takt_engine/privileged_writer.py", policy.read_text())
+
+    def test_root_backup_reader_checks_open_handle_owner_type_size_and_nul_bytes(self):
+        helper = Path(__file__).resolve().parents[1] / "src" / "takt_engine" / "privileged_writer.py"
+        spec = importlib.util.spec_from_file_location("takt_engine_helper_backup_test", helper)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backup = root / "config.txt.test.bak"
+            backup.write_text("[all]\\narm_freq=2400\\n", encoding="utf-8")
+            self.assertEqual(
+                module._read_restore_backup(backup, os.getuid()),
+                "[all]\\narm_freq=2400\\n",
+            )
+            with self.assertRaisesRegex(ValueError, "gehört nicht"):
+                module._read_restore_backup(backup, os.getuid() + 1)
+
+            backup.write_bytes(b"[all]\\x00\\n")
+            with self.assertRaisesRegex(ValueError, "NUL"):
+                module._read_restore_backup(backup, os.getuid())
+
+            backup.write_bytes(b"x" * (module.MAX_RESTORE_BACKUP_BYTES + 1))
+            with self.assertRaisesRegex(ValueError, "256 KiB"):
+                module._read_restore_backup(backup, os.getuid())
+
+            with self.assertRaisesRegex(ValueError, "reguläre Datei"):
+                module._read_restore_backup(root, os.getuid())
 
 
 class AdvancedFeatureTests(unittest.TestCase):
