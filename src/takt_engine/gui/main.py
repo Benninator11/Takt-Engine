@@ -844,12 +844,24 @@ class TaktEngineWindow(Gtk.Window):
         visual_row.pack_start(self.fan_animation_area, False, False, 0)
         visual_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         visual_text.set_valign(Gtk.Align.CENTER)
-        visual_text.pack_start(Gtk.Label(label="Aktuelle Lüfterleistung"), False, False, 0)
-        self.fan_live_progress = Gtk.ProgressBar()
-        self.fan_live_progress.set_show_text(True)
-        self.fan_live_progress.set_fraction(0.0)
-        self.fan_live_progress.set_text("Warte auf Lüfterdaten …")
-        visual_text.pack_start(self.fan_live_progress, False, False, 0)
+        visual_text.pack_start(Gtk.Label(label="Lüfterleistung · Balken ziehen zum Einstellen"), False, False, 0)
+        self.fan_live_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 29, 100, 1)
+        self.fan_live_scale.set_digits(0)
+        self.fan_live_scale.set_draw_value(True)
+        self.fan_live_scale.set_value(60)
+        self.fan_live_scale.set_hexpand(True)
+        self.fan_live_scale.set_tooltip_text(
+            "Ziehe den Regler direkt im Balken. Danach mit „Live-Leistung übernehmen“ vorübergehend aktivieren."
+        )
+        self.fan_live_scale.connect("value-changed", self._on_fan_live_slider_changed)
+        self.fan_live_scale.connect("button-press-event", self._on_fan_slider_press)
+        self.fan_live_scale.connect("button-release-event", self._on_fan_slider_release)
+        self._fan_slider_dragging = False
+        visual_text.pack_start(self.fan_live_scale, False, False, 0)
+        self.fan_live_actual_label = Gtk.Label(label="Aktueller Messwert wird gelesen …")
+        self.fan_live_actual_label.set_xalign(0)
+        self.fan_live_actual_label.get_style_context().add_class("dim-label")
+        visual_text.pack_start(self.fan_live_actual_label, False, False, 0)
         visual_row.pack_start(visual_text, True, True, 0)
         page.pack_start(visual_row, False, False, 4)
 
@@ -933,13 +945,6 @@ class TaktEngineWindow(Gtk.Window):
         live_note.set_line_wrap(True)
         live_note.get_style_context().add_class("dim-label")
         page.pack_start(live_note, False, False, 0)
-
-        self.fan_live_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 29, 100, 1)
-        self.fan_live_scale.set_digits(0)
-        self.fan_live_scale.set_draw_value(True)
-        self.fan_live_scale.set_value(60)
-        self.fan_live_scale.connect("value-changed", self._on_fan_live_slider_changed)
-        page.pack_start(self.fan_live_scale, False, False, 0)
 
         live_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         live_controls.pack_start(Gtk.Label(label="Dauer (Sekunden):"), False, False, 0)
@@ -1269,14 +1274,22 @@ class TaktEngineWindow(Gtk.Window):
             self.fan_animation_area.queue_draw()
         return True
 
+    def _on_fan_slider_press(self, _widget, _event):
+        self._fan_slider_dragging = True
+        return False
+
+    def _on_fan_slider_release(self, _widget, _event):
+        self._fan_slider_dragging = False
+        self._on_fan_live_slider_changed(self.fan_live_scale)
+        return False
+
     def _on_fan_live_slider_changed(self, _scale):
         if not hasattr(self, "fan_live_scale"):
             return
         value = self.fan_live_scale.get_value_as_int()
         duration = self.fan_override_duration.get_value_as_int() if hasattr(self, "fan_override_duration") else 60
-        if hasattr(self, "fan_live_progress"):
-            self.fan_live_progress.set_fraction(value / 100.0)
-            self.fan_live_progress.set_text(f"Vorschau: {value} %")
+        if hasattr(self, "fan_live_actual_label"):
+            self.fan_live_actual_label.set_text(f"Ausgewählter Zielwert: {value} % · Dauer: {duration} Sekunden")
         if hasattr(self, "fan_curve_runtime_label"):
             self.fan_curve_runtime_label.set_tooltip_text(
                 f"Manueller Wert {value} % für {duration} Sekunden. Die Temperaturkurve bleibt Sicherheits-Untergrenze."
@@ -1330,8 +1343,9 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_curve_runtime_label.set_text(
             f"SoC: {temperature} · PWM: {percent_text} · Drehzahl: {rpm_text}"
         )
-        self.fan_live_progress.set_fraction(state["speed_percent"] / 100.0)
-        self.fan_live_progress.set_text(f"{percent_text} · {rpm_text}")
+        self.fan_live_actual_label.set_text(f"Ist: {percent_text} · {rpm_text}")
+        if not getattr(self, "_fan_slider_dragging", False):
+            self.fan_live_scale.set_value(state["speed_percent"])
         try:
             curve = self._current_fan_curve_values()
             auto_floor = MIN_FAN_SPEED_PERCENT
