@@ -28,12 +28,18 @@ install -d -m 0755 "$INSTALL_DIR/share"
 install -m 0644 "$PROJECT_DIR/data/takt-engine.svg" "$INSTALL_DIR/share/takt-engine.svg"
 install -m 0644 "$PROJECT_DIR/README.md" "$INSTALL_DIR/README.md"
 install -m 0644 "$PROJECT_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
+install -d -m 0755 /usr/share/polkit-1/actions
+install -m 0644 "$PROJECT_DIR/polkit/org.benninator.takt-engine.policy" \
+  /usr/share/polkit-1/actions/org.benninator.takt-engine.policy
 
 # Remove the older userspace PWM daemon. The Pi 5 firmware/kernel already
 # owns this fan; a second writer can fight the thermal cooling controller.
 if command -v systemctl >/dev/null 2>&1; then
   if systemctl is-active --quiet takt-engine-fan.service || [[ -e /etc/systemd/system/takt-engine-fan.service ]]; then
-    systemctl disable --now takt-engine-fan.service
+    if ! systemctl disable --now takt-engine-fan.service; then
+      echo "WARNUNG: Alter Lüfterdienst ließ sich nicht vollständig deaktivieren. Bitte danach systemctl status takt-engine-fan.service prüfen." >&2
+      true
+    fi
   fi
 fi
 rm -f /etc/systemd/system/takt-engine-fan.service
@@ -56,6 +62,7 @@ fi
 chown -R root:root "$INSTALL_DIR"
 find "$INSTALL_DIR" -type d -exec chmod 0755 {} +
 find "$INSTALL_DIR" -type f -exec chmod 0644 {} +
+chmod 0755 "$INSTALL_DIR/src/takt_engine/privileged_writer.py"
 
 cat > /usr/local/bin/takt-engine <<'LAUNCHER'
 #!/usr/bin/env sh
