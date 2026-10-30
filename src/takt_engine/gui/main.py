@@ -22,15 +22,14 @@ except (ImportError, ValueError) as exc:  # pragma: no cover - depends on target
 from takt_engine import __version__
 from takt_engine.bench.runner import run_benchmark
 from takt_engine.core.apply import (
-    apply_fan_curve, apply_fan_override, clear_fan_override,
+    apply_fan_curve,
     apply_settings, confirm_boot_rollback, restore_config_backup,
 )
 from takt_engine.core.config import parse_config_values, read_config, render_managed_config
 from takt_engine.core.detector import detect_hardware
 from takt_engine.core.fan_curve import (
-    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, FAN_CURVE_CONFIG_PATH,
-    MIN_FAN_SPEED_PERCENT, curve_speed_for_temperature, find_hwmon_fan,
-    load_persistent_fan_curve, parse_fan_curve_config, read_hwmon_fan_state,
+    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C,
+    MIN_FAN_SPEED_PERCENT, parse_fan_curve_config, read_hwmon_fan_state,
     validate_fan_curve,
 )
 from takt_engine.core.limits import (LIMITS, ValidationError, clock_gradient_color, clock_warning_zone,
@@ -856,11 +855,12 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_last_temperature = None
         self._fan_save_animation_stage = 0
         self._fan_save_animation_source_id = None
+        self._fan_slider_syncing = False
 
-        if self.model_id != "pi5":
+        if self.model_id != "pi5" or not self.hardware.config_path:
             note = Gtk.Label(label=(
-                "Die erweiterte Lüftersteuerung benötigt einen Raspberry Pi 5 "
-                "mit kompatiblem Lüfter am offiziellen PWM-Anschluss."
+                "Die native Lüfterkurve benötigt einen Raspberry Pi 5 mit einer vorhandenen "
+                "config.txt. Die vier PWM-Stufen werden direkt von der Pi-Firmware verwaltet."
             ))
             note.set_xalign(0)
             note.set_line_wrap(True)
@@ -868,9 +868,9 @@ class TaktEngineWindow(Gtk.Window):
             return
 
         intro = Gtk.Label(label=(
-            "Erstelle eine eigene Temperaturkurve mit bis zu zehn Stufen. "
-            "Die Steuerung läuft als Systemdienst und bleibt auch dann aktiv, "
-            "wenn Takt Engine geschlossen ist."
+            "Die Raspberry-Pi-5-Firmware unterstützt vier Temperaturstufen. "
+            "Takt Engine schreibt diese Werte in config.txt; nach dem Neustart "
+            "regelt die Firmware den Lüfter automatisch – auch wenn die App geschlossen ist."
         ))
         intro.set_xalign(0)
         intro.set_line_wrap(True)
@@ -887,25 +887,32 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_animation_area.set_size_request(72, 72)
         self.fan_animation_area.connect("draw", self._draw_fan_animation)
         visual_row.pack_start(self.fan_animation_area, False, False, 0)
+
         visual_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         visual_text.set_valign(Gtk.Align.CENTER)
-        visual_text.pack_start(Gtk.Label(label="Lüfterleistung · Balken ziehen zum Einstellen"), False, False, 0)
-        self.fan_live_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 29, 100, 1)
+        visual_text.pack_start(
+            Gtk.Label(label="Lüfterleistung · Stufe auswählen und Balken ziehen"),
+            False, False, 0,
+        )
+        self.fan_stage_combo = Gtk.ComboBoxText()
+        self.fan_stage_combo.connect("changed", self._on_fan_stage_selected)
+        visual_text.pack_start(self.fan_stage_combo, False, False, 0)
+
+        self.fan_live_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, MIN_FAN_SPEED_PERCENT, 100, 1
+        )
         self.fan_live_scale.set_digits(0)
         self.fan_live_scale.set_draw_value(True)
-        self.fan_live_scale.set_value(60)
+        self.fan_live_scale.set_value(29)
         self.fan_live_scale.set_hexpand(True)
         self.fan_live_scale.set_tooltip_text(
-            "Ziehe den Regler direkt im Balken. Danach mit „Live-Leistung übernehmen“ vorübergehend aktivieren."
+            "Stellt die PWM-Leistung der ausgewählten Temperaturstufe ein. "
+            "Danach die Kurve speichern und den Raspberry Pi neu starten."
         )
-        self.fan_live_scale.connect("value-changed", self._on_fan_live_slider_changed)
-        self.fan_live_scale.connect("button-press-event", self._on_fan_slider_press)
-        self.fan_live_scale.connect("button-release-event", self._on_fan_slider_release)
-        self._fan_slider_dragging = False
-        self._fan_slider_has_manual_selection = False
-        self._fan_slider_syncing = False
+        self.fan_live_scale.connect("value-changed", self._on_fan_stage_speed_changed)
         visual_text.pack_start(self.fan_live_scale, False, False, 0)
-        self.fan_live_actual_label = Gtk.Label(label="Aktueller Messwert wird gelesen …")
+
+        self.fan_live_actual_label = Gtk.Label(label="Istwert: PWM/RPM wird gelesen …")
         self.fan_live_actual_label.set_xalign(0)
         self.fan_live_actual_label.get_style_context().add_class("dim-label")
         visual_text.pack_start(self.fan_live_actual_label, False, False, 0)
@@ -919,9 +926,10 @@ class TaktEngineWindow(Gtk.Window):
         page.pack_start(chart, False, False, 4)
 
         safety_note = Gtk.Label(label=(
-            "Schutzregeln: mindestens 29 % bei 50 °C, 49 % bei 60 °C, 69 % bei 67,5 °C "
-            "und 95 % bei 75 °C. Die Lüfterleistung darf mit steigender Temperatur nie sinken. "
-            "Ab 80 °C oder bei einem Sensorausfall wird volle Leistung angefordert."
+            "Schutzkurve: Start spätestens bei 50 °C, mindestens 49 % bei 60 °C, "
+            "69 % bei 67,5 °C und volle Leistung bei 75 °C. Die Stufen müssen "
+            "temperaturabhängig aufsteigend bleiben. Die Firmware behält ihre eigene "
+            "thermische Steuerung und Hysterese."
         ))
         safety_note.set_xalign(0)
         safety_note.set_line_wrap(True)
@@ -934,19 +942,10 @@ class TaktEngineWindow(Gtk.Window):
         self.fan_curve_grid.set_hexpand(False)
         row_scroll = Gtk.ScrolledWindow()
         row_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        row_scroll.set_min_content_height(230)
-        row_scroll.set_max_content_height(310)
+        row_scroll.set_min_content_height(175)
+        row_scroll.set_max_content_height(240)
         row_scroll.add(self.fan_curve_grid)
         page.pack_start(row_scroll, True, True, 0)
-
-        stage_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.fan_add_stage_button = Gtk.Button(label="＋ Stufe hinzufügen")
-        self.fan_add_stage_button.connect("clicked", self.add_fan_curve_stage)
-        stage_buttons.pack_start(self.fan_add_stage_button, False, False, 0)
-        self.fan_remove_stage_button = Gtk.Button(label="− Letzte Zwischenstufe entfernen")
-        self.fan_remove_stage_button.connect("clicked", self.remove_fan_curve_stage)
-        stage_buttons.pack_start(self.fan_remove_stage_button, False, False, 0)
-        page.pack_start(stage_buttons, False, False, 0)
 
         hysteresis_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         hysteresis_label = Gtk.Label(label="Hysterese (°C):")
@@ -963,49 +962,20 @@ class TaktEngineWindow(Gtk.Window):
         reset_button = Gtk.Button(label="Standardkurve laden")
         reset_button.connect("clicked", self.reset_fan_curve)
         curve_buttons.pack_start(reset_button, False, False, 0)
-        read_button = Gtk.Button(label="Gespeicherte Kurve laden")
+        read_button = Gtk.Button(label="Firmwarekurve aus config.txt laden")
         read_button.connect("clicked", self.load_fan_curve_from_config)
         curve_buttons.pack_start(read_button, False, False, 0)
-        self.fan_curve_apply_button = Gtk.Button(label="Kurve dauerhaft speichern")
+        self.fan_curve_apply_button = Gtk.Button(label="Kurve speichern…")
         self.fan_curve_apply_button.get_style_context().add_class("suggested-action")
         self.fan_curve_apply_button.connect("clicked", self.apply_fan_curve_dialog)
         curve_buttons.pack_start(self.fan_curve_apply_button, False, False, 0)
         page.pack_start(curve_buttons, False, False, 3)
 
-        self.fan_curve_status_label = Gtk.Label(label="Noch keine eigene Kurve gespeichert.")
+        self.fan_curve_status_label = Gtk.Label(label="Firmwarekurve wird geladen …")
         self.fan_curve_status_label.set_xalign(0)
         self.fan_curve_status_label.set_line_wrap(True)
         self.fan_curve_status_label.get_style_context().add_class("dim-label")
         page.pack_start(self.fan_curve_status_label, False, False, 0)
-
-        live_heading = Gtk.Label()
-        live_heading.set_markup("<b>Live-Regler · vorübergehende manuelle Anpassung</b>")
-        live_heading.set_xalign(0)
-        page.pack_start(live_heading, False, False, 2)
-
-        live_note = Gtk.Label(label=(
-            "Der Live-Regler hält die gewählte Leistung höchstens fünf Minuten. "
-            "Er kann die automatische Kurve verstärken, aber niemals die gerade benötigte Kühlleistung unterschreiten. "
-            "Nach Ablauf oder Neustart übernimmt wieder die gespeicherte Kurve."
-        ))
-        live_note.set_xalign(0)
-        live_note.set_line_wrap(True)
-        live_note.get_style_context().add_class("dim-label")
-        page.pack_start(live_note, False, False, 0)
-
-        live_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        live_controls.pack_start(Gtk.Label(label="Dauer (Sekunden):"), False, False, 0)
-        self.fan_override_duration = Gtk.SpinButton.new_with_range(5, 300, 5)
-        self.fan_override_duration.set_value(60)
-        live_controls.pack_start(self.fan_override_duration, False, False, 0)
-        self.fan_override_button = Gtk.Button(label="Live-Leistung übernehmen")
-        self.fan_override_button.get_style_context().add_class("suggested-action")
-        self.fan_override_button.connect("clicked", self.apply_fan_override_dialog)
-        live_controls.pack_start(self.fan_override_button, False, False, 0)
-        self.fan_auto_button = Gtk.Button(label="Automatik sofort")
-        self.fan_auto_button.connect("clicked", self.clear_fan_override_dialog)
-        live_controls.pack_start(self.fan_auto_button, False, False, 0)
-        page.pack_start(live_controls, False, False, 0)
 
         self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=False)
         self.load_fan_curve_from_config(announce=False)
