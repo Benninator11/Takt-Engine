@@ -214,7 +214,7 @@ def render_firmware_fan_config(
     lines = [
         "",
         FAN_CONFIG_BEGIN_MARKER,
-        "[all]",
+        "[pi5]",
         "# Native Raspberry Pi 5 firmware fan curve (four hardware stages).",
     ]
     for index, point in enumerate(normalized["points"]):
