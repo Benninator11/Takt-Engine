@@ -28,6 +28,11 @@ install -d -m 0755 "$INSTALL_DIR/share"
 install -m 0644 "$PROJECT_DIR/data/takt-engine.svg" "$INSTALL_DIR/share/takt-engine.svg"
 install -m 0644 "$PROJECT_DIR/README.md" "$INSTALL_DIR/README.md"
 install -m 0644 "$PROJECT_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
+
+# Persistent Raspberry Pi 5 fan controller and its systemd unit.
+install -m 0755 "$PROJECT_DIR/scripts/fan-control.py" /usr/local/libexec/takt-engine-fan-control.py
+install -m 0644 "$PROJECT_DIR/scripts/takt-engine-fan.service" /etc/systemd/system/takt-engine-fan.service
+install -d -m 0755 /etc/takt-engine /var/lib/takt-engine/fan-backups /run/takt-engine
 # Root-owned post-boot rollback helper and its timer are optional safety net
 # for an explicitly armed trial. They do nothing unless a pending marker exists.
 install -d -m 0755 /usr/local/libexec
@@ -101,4 +106,5 @@ printf '\nInstallation abgeschlossen.\n'
 printf 'Start im Terminal: takt-engine\n'
 printf 'Oder über Anwendungsmenü/Desktop: Takt Engine\n'
 printf 'Tests aus dem Quellordner: PYTHONPATH=src python3 -m unittest discover -s tests -v\n'
-printf '\nZum Schreiben von config.txt wird beim Anwenden eine Rechteabfrage geöffnet.\n'
+printf '\nZum Schreiben von config.txt und zum Ändern der Lüfterkurve wird beim Anwenden eine Rechteabfrage geöffnet.\n'
+printf 'Eine gespeicherte Pi-5-Lüfterkurve wird als systemd-Dienst automatisch bei jedem Start geladen.\n'
