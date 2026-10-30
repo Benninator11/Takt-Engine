@@ -472,15 +472,13 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backup = root / "config.txt.test.bak"
-            backup.write_text("[all]\\narm_freq=2400\\n", encoding="utf-8")
-            self.assertEqual(
-                module._read_restore_backup(backup, os.getuid()),
-                "[all]\\narm_freq=2400\\n",
-            )
+            expected = chr(10).join(("[all]", "arm_freq=2400", ""))
+            backup.write_text(expected, encoding="utf-8")
+            self.assertEqual(module._read_restore_backup(backup, os.getuid()), expected)
             with self.assertRaisesRegex(ValueError, "gehört nicht"):
                 module._read_restore_backup(backup, os.getuid() + 1)
 
-            backup.write_bytes(b"[all]\\x00\\n")
+            backup.write_bytes(b"[all]" + bytes((0,)) + b"tail")
             with self.assertRaisesRegex(ValueError, "NUL"):
                 module._read_restore_backup(backup, os.getuid())
 
