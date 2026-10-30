@@ -306,12 +306,23 @@ over_voltage_delta=-5000
 
 
 class PresetTests(unittest.TestCase):
-    def test_exactly_ten_profiles_and_each_passes_validation(self):
+    def test_builtin_profiles_are_expandable_categorized_and_valid(self):
         presets = load_presets()
-        self.assertEqual(len(presets), 10)
+        self.assertGreater(len(presets), 10)
+        self.assertTrue(any(preset.get("category") == "performance" for preset in presets))
+        self.assertTrue(any(preset.get("category") == "undervolting" for preset in presets))
+        self.assertEqual(len({preset["id"] for preset in presets}), len(presets))
         for preset in presets:
             with self.subTest(preset=preset["id"]):
                 validate_values(preset["model"], preset["values"])
+
+    def test_undervolting_presets_use_only_small_negative_offsets(self):
+        presets = [preset for preset in load_presets() if preset.get("category") == "undervolting"]
+        self.assertTrue(presets)
+        for preset in presets:
+            with self.subTest(preset=preset["id"]):
+                offset = preset["values"]["over_voltage_delta"]
+                self.assertIn(offset, (-5000, -10000))
 
 
 class ThemeAndDesktopTests(unittest.TestCase):
