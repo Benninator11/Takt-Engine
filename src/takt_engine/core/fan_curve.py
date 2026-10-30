@@ -21,14 +21,8 @@ FAN_CURVE_SCHEMA_VERSION = 1
 
 DEFAULT_FAN_CURVE = (
     {"temperature_c": 50.0, "speed_percent": 29},
-    {"temperature_c": 52.5, "speed_percent": 34},
-    {"temperature_c": 55.0, "speed_percent": 39},
-    {"temperature_c": 57.5, "speed_percent": 44},
     {"temperature_c": 60.0, "speed_percent": 49},
-    {"temperature_c": 62.5, "speed_percent": 56},
-    {"temperature_c": 65.0, "speed_percent": 63},
-    {"temperature_c": 67.5, "speed_percent": 70},
-    {"temperature_c": 71.0, "speed_percent": 84},
+    {"temperature_c": 67.5, "speed_percent": 69},
     {"temperature_c": 75.0, "speed_percent": 100},
 )
 DEFAULT_HYSTERESIS_C = 5.0
@@ -53,9 +47,9 @@ def validate_fan_curve(
     points: Sequence[Mapping[str, object]],
     hysteresis_c: object = DEFAULT_HYSTERESIS_C,
 ) -> dict:
-    """Validate a four-to-ten-stage curve with conservative thermal guardrails."""
-    if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not 4 <= len(points) <= 10:
-        raise ValueError("Eine Lüfterkurve muss zwischen 4 und 10 Temperaturstufen enthalten.")
+    """Validate the four fan stages supported by Raspberry Pi 5 firmware."""
+    if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or len(points) != 4:
+        raise ValueError("Die Raspberry-Pi-5-Firmware unterstützt genau vier Lüfterstufen.")
 
     normalized = []
     previous_temp = None
@@ -180,6 +174,62 @@ def save_persistent_fan_curve(
     }
     _atomic_json_write(path, payload, 0o644)
     return backup_path
+
+
+FAN_CONFIG_BEGIN_MARKER = "# BEGIN TAKT ENGINE PI5 FAN CURVE"
+FAN_CONFIG_END_MARKER = "# END TAKT ENGINE PI5 FAN CURVE"
+
+
+def render_firmware_fan_config(
+    original: str,
+    points: Sequence[Mapping[str, object]],
+    hysteresis_c: object = DEFAULT_HYSTERESIS_C,
+) -> str:
+    """Write the native four-stage Raspberry Pi 5 fan curve to config.txt.
+
+    The firmware/thermal driver owns the fan. Takt Engine must not race it by
+    repeatedly writing pwm1 from a separate daemon.
+    """
+    normalized = validate_fan_curve(points, hysteresis_c)
+    begin_count = original.count(FAN_CONFIG_BEGIN_MARKER)
+    end_count = original.count(FAN_CONFIG_END_MARKER)
+    if begin_count != end_count or begin_count > 1:
+        raise ValueError(
+            "Der Takt-Engine-Lüfterblock ist beschädigt oder doppelt vorhanden. "
+            "Bitte config.txt vor dem Ändern manuell prüfen."
+        )
+
+    cleaned = original
+    if begin_count == 1:
+        pattern = re.compile(
+            re.escape(FAN_CONFIG_BEGIN_MARKER)
+            + r".*?"
+            + re.escape(FAN_CONFIG_END_MARKER)
+            + r"\s*",
+            re.DOTALL,
+        )
+        cleaned = pattern.sub("", original, count=1)
+
+    hysteresis_milli = int(round(normalized["hysteresis_c"] * 1000))
+    lines = [
+        "",
+        FAN_CONFIG_BEGIN_MARKER,
+        "[all]",
+        "# Native Raspberry Pi 5 firmware fan curve (four hardware stages).",
+    ]
+    for index, point in enumerate(normalized["points"]):
+        temperature_milli = int(round(point["temperature_c"] * 1000))
+        pwm_value = max(0, min(255, int(round(point["speed_percent"] * 255 / 100))))
+        lines.extend((
+            f"dtparam=fan_temp{index}={temperature_milli}",
+            f"dtparam=fan_temp{index}_hyst={hysteresis_milli}",
+            f"dtparam=fan_temp{index}_speed={pwm_value}",
+        ))
+    lines.append(FAN_CONFIG_END_MARKER)
+    result = cleaned.rstrip() + "\n" + "\n".join(lines) + "\n"
+    if any(len(line) > 98 for line in result.splitlines()):
+        raise ValueError("Eine config.txt-Zeile überschreitet das Firmware-Limit von 98 Zeichen.")
+    return result
 
 
 def parse_fan_curve_config(config_text: str) -> dict:
