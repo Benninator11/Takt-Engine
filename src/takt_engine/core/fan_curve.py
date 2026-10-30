@@ -65,7 +65,7 @@ def validate_fan_curve(
                 "und höchstens 100 % erreichen."
             )
         if speed <= previous_speed:
-            raise ValueError("Die Lüfterleistung darf mit steigender Temperatur nicht sinken.")
+            raise ValueError("Die Lüfterleistung muss mit jeder Temperaturstufe steigen.")
 
         normalized.append({
             "temperature_c": round(temperature, 1),
@@ -138,7 +138,7 @@ def parse_fan_curve_config(config_text: str) -> dict:
             "speed_percent": percentage,
         })
     hysteresis_values = [values[f"fan_temp{index}_hyst"] for index in range(4)]
-    hysteresis = round((hysteresis_values[-1] if hysteresis_values else 5000) / 1000.0, 1)
+    hysteresis = round((hysteresis_values[0] if hysteresis_values else 5000) / 1000.0, 1)
     return {"points": points, "hysteresis_c": hysteresis}
 
 
