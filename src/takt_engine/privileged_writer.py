@@ -123,13 +123,35 @@ def main() -> int:
             if not isinstance(payload, dict):
                 raise ValueError("Die Lüfterkurve muss als JSON-Objekt übergeben werden.")
 
-            # Stop the old userspace PWM daemon. It competed with the kernel's
-            # native thermal cooling device and could overwrite its fan output.
-            subprocess.run(
-                ["systemctl", "disable", "--now", "takt-engine-fan.service"],
-                check=False, capture_output=True, text=True, timeout=20,
+            # Stop the old userspace PWM daemon before switching to the
+            # kernel/firmware thermal controller. Do not continue if it is
+            # still active: two independent PWM writers would race each other.
+            legacy_unit = Path("/etc/systemd/system/takt-engine-fan.service")
+            legacy_script = Path("/usr/local/libexec/takt-engine-fan-control.py")
+            active_check = subprocess.run(
+                ["systemctl", "is-active", "--quiet", "takt-engine-fan.service"],
+                check=False, capture_output=True, text=True, timeout=10,
             )
+            if active_check.returncode == 0 or legacy_unit.exists():
+                stopped = subprocess.run(
+                    ["systemctl", "disable", "--now", "takt-engine-fan.service"],
+                    check=False, capture_output=True, text=True, timeout=20,
+                )
+                if stopped.returncode != 0:
+                    detail = (stopped.stderr or stopped.stdout or "systemd meldet einen unbekannten Fehler.").strip()
+                    raise ValueError(
+                        "Der alte PWM-Lüfterdienst konnte nicht sicher beendet werden. "
+                        "Die Firmwarekurve wurde nicht geschrieben. "
+                        "Bitte installiere Takt Engine 1.5.2 erneut und prüfe systemctl. "
+                        + detail
+                    )
+            legacy_unit.unlink(missing_ok=True)
+            legacy_script.unlink(missing_ok=True)
             FAN_OVERRIDE_PATH.unlink(missing_ok=True)
+            subprocess.run(
+                ["systemctl", "daemon-reload"],
+                check=False, capture_output=True, text=True, timeout=15,
+            )
 
             original = read_config(path)
             updated = render_firmware_fan_config(
