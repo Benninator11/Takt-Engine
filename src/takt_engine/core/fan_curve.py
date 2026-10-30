@@ -257,12 +257,15 @@ def parse_fan_curve_config(config_text: str) -> dict:
         match = re.match(r"^dtparam\s*=\s*(.+)$", line, re.IGNORECASE)
         if not match:
             continue
-        setting = setting_pattern.fullmatch(match.group(1).strip())
-        if not setting:
-            continue
-        index, suffix, raw_value = setting.groups()
-        column = {"": 0, "hyst": 1, "speed": 2}[suffix.lower() if suffix else ""]
-        values[int(index)][column] = int(raw_value)
+        # Raspberry Pi config.txt accepts multiple comma-separated parameters
+        # on one dtparam line; parse both that form and one parameter per line.
+        for raw_setting in match.group(1).split(","):
+            setting = setting_pattern.fullmatch(raw_setting.strip())
+            if not setting:
+                continue
+            index, suffix, raw_value = setting.groups()
+            column = {"": 0, "hyst": 1, "speed": 2}[suffix.lower() if suffix else ""]
+            values[int(index)][column] = int(raw_value)
 
     points = []
     for temperature, _hysteresis, pwm in values:
