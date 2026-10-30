@@ -1012,7 +1012,7 @@ class TaktEngineWindow(Gtk.Window):
         if hasattr(self, "fan_add_stage_button"):
             count = len(self.fan_curve_row_widgets)
             self.fan_add_stage_button.set_sensitive(count < 10)
-            self.fan_remove_stage_button.set_sensitive(count > 2)
+            self.fan_remove_stage_button.set_sensitive(count > 4)
 
     def _current_fan_curve_values(self):
         points = [
@@ -1045,7 +1045,7 @@ class TaktEngineWindow(Gtk.Window):
         self._set_fan_curve_rows(points, animate=True)
 
     def remove_fan_curve_stage(self, _button=None):
-        if len(self.fan_curve_row_widgets) <= 2:
+        if len(self.fan_curve_row_widgets) <= 4:
             return
         try:
             curve = self._current_fan_curve_values()
