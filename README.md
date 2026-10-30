@@ -12,7 +12,7 @@
 ## Änderungen in 1.5.1
 
 - **Lüftersteuerung repariert:** Die vorherige Takt-Engine-Hintergrundsteuerung schrieb direkt in PWM, während der Pi-5-Kernel denselben Lüfter bereits temperaturabhängig verwaltet. Dieser Konflikt wurde entfernt.
-- Die automatische Lüfterkurve nutzt jetzt die native Raspberry-Pi-5-Firmwaresteuerung über \`dtparam=fan_tempN\`, \`fan_tempN_hyst\` und \`fan_tempN_speed\` in \`config.txt\`. Sie läuft nach dem Neustart auch ohne geöffnete App.
+- Die automatische Lüfterkurve nutzt jetzt die native Raspberry-Pi-5-Firmwaresteuerung über `dtparam=fan_tempN`, `fan_tempN_hyst` und `fan_tempN_speed` in `config.txt`. Sie läuft nach dem Neustart auch ohne geöffnete App.
 - Die Firmware stellt vier Stufen bereit. Der Balken verändert jetzt die Lüfterleistung der im Auswahlfeld markierten Stufe; Temperatur und Drehzahl werden separat als Istwerte angezeigt.
 - Änderungen werden vor dem Schreiben gesichert und erfordern einen Neustart. Der Installer deaktiviert und entfernt den alten konkurrierenden PWM-Dienst.
 - Fehlende RPM-/PWM-Telemetrie verhindert nicht mehr das Bearbeiten und Speichern der Firmwarekurve.
