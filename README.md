@@ -1,8 +1,16 @@
 # Takt Engine
 
-**Version 1.4.1** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.5.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.5.0
+
+- Die feste Profilbibliothek wurde von 10 auf 20 Profile erweitert und in **Standard & Alltag**, **Mehr Leistung** und **Undervolting** gegliedert.
+- Neue Pi-5-Leistungsprofile: CPU bis 2.800 MHz, Gaming-/3D-Profil mit 1.000 MHz V3D, Grafik-Fokus und eine 2,75-GHz-Allround-Stufe. Neue Pi-4-Profile ergänzen CPU- und Grafik-Leistung.
+- Neue Undervolting-Profile für Pi 4 und Pi 5 mit −5.000 µV (−5 mV) und −10.000 µV (−10 mV). Es handelt sich um experimentelle Testprofile, nicht um garantierte stabile Spannungen.
+- Die Profilseite warnt jetzt direkt im Undervolting-Bereich vor möglichen Rechenfehlern und Abstürzen. Ein Profil wird weiterhin nur in die Regler geladen; die Änderung an `config.txt` erfolgt erst nach ausdrücklichem Anwenden und Bestätigen.
+- Die Profilbibliothek ist nicht mehr auf exakt zehn Einträge begrenzt.
 
 ## Änderungen in 1.4.1
 
