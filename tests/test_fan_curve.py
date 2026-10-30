@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+import importlib.util
 from pathlib import Path
 
 from takt_engine.core.fan_curve import (
@@ -8,6 +9,9 @@ from takt_engine.core.fan_curve import (
     save_persistent_fan_curve,
     load_persistent_fan_curve,
     curve_speed_for_temperature,
+    create_fan_override,
+    read_fan_override,
+    clear_fan_override,
 )
 
 
@@ -58,6 +62,37 @@ class FanCurveTests(unittest.TestCase):
             backup = save_persistent_fan_curve(DEFAULT_FAN_CURVE, 4, path, backups)
             self.assertTrue(backup.is_file())
             self.assertEqual(len(load_persistent_fan_curve(path)["points"]), 10)
+
+
+    def test_live_override_expires(self):
+        from pathlib import Path
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "override.json"
+            create_fan_override(70, 30, path)
+            expires = json.loads(path.read_text())["expires_at"]
+            self.assertEqual(read_fan_override(path, now=expires - 1), 70)
+            self.assertIsNone(read_fan_override(path, now=expires + 1))
+            self.assertFalse(path.exists())
+            create_fan_override(80, 30, path)
+            clear_fan_override(path)
+            self.assertFalse(path.exists())
+
+    def test_fan_daemon_uses_enabled_pwm_fan_mode(self):
+        root = Path(__file__).resolve().parents[1]
+        script = root / "scripts" / "fan-control.py"
+        spec = importlib.util.spec_from_file_location("takt_engine_fan_control_test", script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            device = Path(tmp)
+            (device / "pwm1_enable").write_text("0")
+            (device / "pwm1").write_text("0")
+            module._write_pwm(device, 50)
+            self.assertEqual((device / "pwm1_enable").read_text(), "2")
+            self.assertEqual((device / "pwm1").read_text(), "128")
 
     def test_hysteresis_and_critical_temperature(self):
         points = [
