@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """Root helper called through pkexec; deliberately accepts only known config paths."""
 import argparse
 import json
@@ -5,6 +6,7 @@ import os
 from pathlib import Path
 import pwd
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,10 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from takt_engine.core.config import read_config, render_managed_config, write_config_atomically  # noqa: E402
 from takt_engine.core.limits import ValidationError, validate_values  # noqa: E402
-from takt_engine.core.fan_curve import (  # noqa: E402
-    FAN_OVERRIDE_PATH,
-    render_firmware_fan_config,
-)
+from takt_engine.core.fan_curve import render_firmware_fan_config  # noqa: E402
 
 ALLOWED_CONFIG_PATHS = {Path("/boot/firmware/config.txt"), Path("/boot/config.txt")}
 ROLLBACK_DIR = Path("/var/lib/takt-engine/rollback")
@@ -93,6 +92,37 @@ def _confirm_rollback() -> None:
     _clear_rollback_state(int(requester))
 
 
+MAX_RESTORE_BACKUP_BYTES = 256 * 1024
+
+
+def _read_restore_backup(path: Path, requester_uid: int) -> str:
+    """Read a user backup from one opened and verified regular-file handle."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ValueError(f"Sicherung konnte nicht sicher geöffnet werden: {exc}") from exc
+
+    with os.fdopen(descriptor, "rb") as handle:
+        metadata = os.fstat(handle.fileno())
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("Die Sicherung muss eine reguläre Datei sein.")
+        if metadata.st_uid != requester_uid:
+            raise ValueError("Die Sicherung gehört nicht dem aufrufenden Benutzer.")
+        if metadata.st_size > MAX_RESTORE_BACKUP_BYTES:
+            raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
+
+        payload = handle.read(MAX_RESTORE_BACKUP_BYTES + 1)
+        if len(payload) > MAX_RESTORE_BACKUP_BYTES:
+            raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
+        if b"\\x00" in payload:
+            raise ValueError("Die Sicherung enthält unzulässige NUL-Bytes.")
+        try:
+            return payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Die Sicherung enthält ungültige UTF-8-Daten.") from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validierter Takt-Engine-Konfigurationsschreiber")
     parser.add_argument("--config")
@@ -147,7 +177,8 @@ def main() -> int:
                     )
             legacy_unit.unlink(missing_ok=True)
             legacy_script.unlink(missing_ok=True)
-            FAN_OVERRIDE_PATH.unlink(missing_ok=True)
+            # Remove a leftover override file from releases before 1.5.1.
+            Path("/run/takt-engine/fan-override.json").unlink(missing_ok=True)
             subprocess.run(
                 ["systemctl", "daemon-reload"],
                 check=False, capture_output=True, text=True, timeout=15,
@@ -183,9 +214,8 @@ def main() -> int:
             backup = Path(args.restore_backup).resolve()
             if backup.parent != expected_dir or not backup.name.startswith("config.txt.") or not backup.name.endswith(".bak"):
                 raise ValueError("Es dürfen nur Takt-Engine-Sicherungen aus dem Benutzer-Backupordner wiederhergestellt werden.")
-            if not backup.is_file() or backup.stat().st_uid != requester_uid:
-                raise ValueError("Sicherung fehlt oder gehört nicht dem aufrufenden Benutzer.")
-            write_config_atomically(path, backup.read_text(encoding="utf-8", errors="replace"))
+            backup_text = _read_restore_backup(backup, requester_uid)
+            write_config_atomically(path, backup_text)
             _clear_rollback_state(requester_uid)
             print(f"Sicherung {backup.name} wurde nach {path} zurückgespielt. Ein Neustart ist erforderlich.")
             return 0
