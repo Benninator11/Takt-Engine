@@ -860,9 +860,9 @@ class TaktEngineWindow(Gtk.Window):
         page.pack_start(chart, False, False, 4)
 
         safety_note = Gtk.Label(label=(
-            "Schutzregeln: Lüfterstart spätestens bei 55 °C, mindestens 29 % ab der ersten Stufe, "
-            "keine sinkende Leistung bei höherer Temperatur und mindestens 95 % spätestens bei 75 °C. "
-            "Ab 80 °C wird unabhängig von der Kurve volle Leistung angefordert."
+            "Schutzregeln: mindestens 29 % bei 50 °C, 49 % bei 60 °C, 69 % bei 67,5 °C "
+            "und 95 % bei 75 °C. Die Lüfterleistung darf mit steigender Temperatur nie sinken. "
+            "Ab 80 °C oder bei einem Sensorausfall wird volle Leistung angefordert."
         ))
         safety_note.set_xalign(0)
         safety_note.set_line_wrap(True)
@@ -1049,17 +1049,21 @@ class TaktEngineWindow(Gtk.Window):
             return
         try:
             curve = self._current_fan_curve_values()
-            points = [dict(point) for point in curve["points"]]
-        except ValueError:
-            points = [
-                {
-                    "temperature_c": row["temperature"].get_value(),
-                    "speed_percent": row["speed"].get_value_as_int(),
-                }
-                for row in self.fan_curve_row_widgets
-            ]
-        points.pop(-2)
-        self._set_fan_curve_rows(points, animate=True)
+        except ValueError as exc:
+            self.show_error("Bitte korrigiere zuerst die Lüfterkurve.\n\n" + str(exc))
+            return
+
+        points = [dict(point) for point in curve["points"]]
+        for remove_index in range(len(points) - 2, 0, -1):
+            candidate = points[:remove_index] + points[remove_index + 1:]
+            try:
+                validate_fan_curve(candidate, curve["hysteresis_c"])
+            except ValueError:
+                continue
+            self._set_fan_curve_rows(candidate, animate=True)
+            return
+
+        self.show_info("Die übrigen Stufen werden für die vier Temperatur-Sicherheitsgrenzen benötigt.")
 
     def reset_fan_curve(self, _button=None):
         self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=True)
