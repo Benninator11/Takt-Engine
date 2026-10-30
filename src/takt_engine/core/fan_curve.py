@@ -18,7 +18,7 @@ DEFAULT_FAN_CURVE = (
     {"temperature_c": 75.0, "speed_percent": 98},
 )
 DEFAULT_HYSTERESIS_C = 5.0
-_MIN_SPEEDS = (25, 40, 60, 95)
+MIN_FAN_SPEED_PERCENT = (29, 49, 69, 95)
 
 
 def _finite_number(value, name: str) -> float:
@@ -59,12 +59,12 @@ def validate_fan_curve(
             raise ValueError("Der Lüfter muss spätestens bei 55 °C anlaufen.")
         if previous_temp is not None and temperature - previous_temp < 2.5:
             raise ValueError("Zwischen zwei Temperaturstufen müssen mindestens 2,5 °C liegen.")
-        if speed_raw != speed or speed < _MIN_SPEEDS[index] or speed > 100:
+        if speed_raw != speed or speed < MIN_FAN_SPEED_PERCENT[index] or speed > 100:
             raise ValueError(
-                f"Lüfterstufe {index + 1} muss mindestens {_MIN_SPEEDS[index]} % "
+                f"Lüfterstufe {index + 1} muss mindestens {MIN_FAN_SPEED_PERCENT[index]} % "
                 "und höchstens 100 % erreichen."
             )
-        if speed < previous_speed:
+        if speed <= previous_speed:
             raise ValueError("Die Lüfterleistung darf mit steigender Temperatur nicht sinken.")
 
         normalized.append({
