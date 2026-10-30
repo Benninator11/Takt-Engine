@@ -104,7 +104,7 @@ class FanCurveTests(unittest.TestCase):
         original = (
             "# keep me\n" + FAN_CONFIG_BEGIN_MARKER + "\n[pi5]\n"
             "dtparam=fan_temp0=40000\n" + FAN_CONFIG_END_MARKER + "\n"
-            "dtparam=audio=on\\n"
+            "dtparam=audio=on\n"
         )
         rendered = render_firmware_fan_config(original, DEFAULT_FAN_CURVE, 5.0)
         self.assertEqual(rendered.count(FAN_CONFIG_BEGIN_MARKER), 1)
