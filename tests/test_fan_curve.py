@@ -16,7 +16,13 @@ class FanCurveTests(unittest.TestCase):
         self.assertEqual(len(validate_fan_curve(DEFAULT_FAN_CURVE)["points"]), 10)
 
     def test_accepts_four_to_ten_stages(self):
-        self.assertEqual(len(validate_fan_curve(DEFAULT_FAN_CURVE[:4])["points"]), 4)
+        safe_four = [
+            {"temperature_c": 50, "speed_percent": 29},
+            {"temperature_c": 60, "speed_percent": 49},
+            {"temperature_c": 67.5, "speed_percent": 69},
+            {"temperature_c": 75, "speed_percent": 95},
+        ]
+        self.assertEqual(len(validate_fan_curve(safe_four)["points"]), 4)
         with self.assertRaises(ValueError):
             validate_fan_curve(DEFAULT_FAN_CURVE[:3])
         with self.assertRaises(ValueError):
@@ -27,9 +33,13 @@ class FanCurveTests(unittest.TestCase):
         points[0]["temperature_c"] = 56
         with self.assertRaises(ValueError):
             validate_fan_curve(points)
-        points = [dict(p) for p in DEFAULT_FAN_CURVE[:3]]
-        points[1]["speed_percent"] = 70
-        points[2]["speed_percent"] = 65
+        points = [
+            {"temperature_c": 50, "speed_percent": 29},
+            {"temperature_c": 60, "speed_percent": 49},
+            {"temperature_c": 67.5, "speed_percent": 69},
+            {"temperature_c": 75, "speed_percent": 95},
+        ]
+        points[2]["speed_percent"] = 45
         with self.assertRaises(ValueError):
             validate_fan_curve(points)
 
@@ -38,7 +48,13 @@ class FanCurveTests(unittest.TestCase):
             root = Path(tmp)
             path = root / "curve.json"
             backups = root / "backups"
-            save_persistent_fan_curve(DEFAULT_FAN_CURVE[:4], 5, path, backups)
+            safe_four = [
+                {"temperature_c": 50, "speed_percent": 29},
+                {"temperature_c": 60, "speed_percent": 49},
+                {"temperature_c": 67.5, "speed_percent": 69},
+                {"temperature_c": 75, "speed_percent": 95},
+            ]
+            save_persistent_fan_curve(safe_four, 5, path, backups)
             backup = save_persistent_fan_curve(DEFAULT_FAN_CURVE, 4, path, backups)
             self.assertTrue(backup.is_file())
             self.assertEqual(len(load_persistent_fan_curve(path)["points"]), 10)
