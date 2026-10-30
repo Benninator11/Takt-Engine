@@ -49,6 +49,8 @@
 - Die damalige Beschreibung der direkten PWM-Steuerung gehört zum alten Betriebsmodus; aktuell schreibt Takt Engine nur die native vierstufige Firmwarekurve in `config.txt`.
 ## Änderungen in 1.3.0 (historisch; aktuelle Firmware-Konfiguration seit 1.5.1)
 
+> Hinweis: Die folgenden Temperatur-Abstände und Leistungswerte dokumentieren den damaligen Stand. Für aktuelle Einstellungen gelten die vier Firmware-Stufen und Sicherheitsprüfungen der Version 1.5.3.
+
 - Neuer Reiter **„Lüfterkurve“** für den Raspberry Pi 5 mit kompatiblem Firmware-Lüfter am offiziellen Lüfteranschluss.
 - Vier Temperaturstufen mit einstellbarer Lüfterleistung und gemeinsamer Hysterese. Die Kurve wird von der Raspberry-Pi-Firmware geregelt und funktioniert nach dem Neustart auch ohne laufende Takt Engine.
 - Sicherheitsgrenzen: Lüfterstart spätestens bei 55 °C, mindestens 2,5 °C Abstand zwischen Stufen, steigende Lüfterleistung und mindestens 95 % in der letzten Stufe bei höchstens 75 °C.
