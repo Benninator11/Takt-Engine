@@ -36,10 +36,10 @@ install -m 0644 "$PROJECT_DIR/polkit/org.benninator.takt-engine.policy" \
 # owns this fan; a second writer can fight the thermal cooling controller.
 if command -v systemctl >/dev/null 2>&1; then
   if systemctl is-active --quiet takt-engine-fan.service || [[ -e /etc/systemd/system/takt-engine-fan.service ]]; then
-    if ! systemctl disable --now takt-engine-fan.service; then
+    systemctl disable --now takt-engine-fan.service || {
       echo "WARNUNG: Alter Lüfterdienst ließ sich nicht vollständig deaktivieren. Bitte danach systemctl status takt-engine-fan.service prüfen." >&2
       true
-    fi
+    }
   fi
 fi
 rm -f /etc/systemd/system/takt-engine-fan.service
