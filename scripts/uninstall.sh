@@ -19,6 +19,7 @@ rm -f /usr/local/libexec/takt-engine-rollback-check.py /usr/local/libexec/takt-e
 rm -rf /run/takt-engine
 rm -rf /var/lib/takt-engine/rollback
 rm -f /usr/local/bin/takt-engine /usr/share/applications/takt-engine.desktop
+rm -f /usr/share/polkit-1/actions/org.benninator.takt-engine.policy
 TARGET_USER="${SUDO_USER:-}"
 if [[ -n "$TARGET_USER" && "$TARGET_USER" != "root" ]] && getent passwd "$TARGET_USER" >/dev/null; then
   TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
