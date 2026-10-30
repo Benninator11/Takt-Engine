@@ -21,12 +21,17 @@ except (ImportError, ValueError) as exc:  # pragma: no cover - depends on target
 
 from takt_engine import __version__
 from takt_engine.bench.runner import run_benchmark
-from takt_engine.core.apply import apply_fan_curve, apply_settings, confirm_boot_rollback, restore_config_backup
+from takt_engine.core.apply import (
+    apply_fan_curve, apply_fan_override, clear_fan_override,
+    apply_settings, confirm_boot_rollback, restore_config_backup,
+)
 from takt_engine.core.config import parse_config_values, read_config, render_managed_config
 from takt_engine.core.detector import detect_hardware
 from takt_engine.core.fan_curve import (
-    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, MIN_FAN_SPEED_PERCENT,
-    parse_fan_curve_config, validate_fan_curve,
+    DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C, FAN_CURVE_CONFIG_PATH,
+    MIN_FAN_SPEED_PERCENT, curve_speed_for_temperature, find_hwmon_fan,
+    load_persistent_fan_curve, parse_fan_curve_config, read_hwmon_fan_state,
+    validate_fan_curve,
 )
 from takt_engine.core.limits import (LIMITS, ValidationError, clock_gradient_color, clock_warning_zone,
                                             experimental_clock_warnings, validate_values)
@@ -799,14 +804,18 @@ class TaktEngineWindow(Gtk.Window):
 
     def _build_fan_curve_page(self):
         page = self._make_page("Lüfterkurve")
-        self.fan_curve_temp_spins = []
-        self.fan_curve_speed_spins = []
+        self.fan_curve_row_widgets = []
+        self.fan_animation_angle = 0.0
+        self.fan_current_percent = 0
+        self.fan_current_rpm = None
+        self.fan_last_temperature = None
+        self._fan_save_animation_stage = 0
+        self._fan_save_animation_source_id = None
 
         if self.model_id != "pi5":
             note = Gtk.Label(label=(
-                "Die integrierte Lüfterkurven-Steuerung ist derzeit für den Raspberry Pi 5 "
-                "mit angeschlossenem, kompatiblem Firmware-Lüfter vorgesehen. Ein vorhandener "
-                "Lüfter wird nicht automatisch auf seine Verkabelung geprüft."
+                "Die erweiterte Lüftersteuerung benötigt einen Raspberry Pi 5 "
+                "mit kompatiblem Lüfter am offiziellen PWM-Anschluss."
             ))
             note.set_xalign(0)
             note.set_line_wrap(True)
@@ -814,131 +823,278 @@ class TaktEngineWindow(Gtk.Window):
             return
 
         intro = Gtk.Label(label=(
-            "Passe die vier Temperaturstufen des Raspberry-Pi-5-Firmwarelüfters an. "
-            "Die Firmware regelt den Lüfter danach selbstständig – auch ohne dass Takt Engine läuft. "
-            "Änderungen werden nach einem Neustart aktiv."
+            "Erstelle eine eigene Temperaturkurve mit bis zu zehn Stufen. "
+            "Die Steuerung läuft als Systemdienst und bleibt auch dann aktiv, "
+            "wenn Takt Engine geschlossen ist."
         ))
         intro.set_xalign(0)
         intro.set_line_wrap(True)
         page.pack_start(intro, False, False, 0)
 
+        self.fan_curve_runtime_label = Gtk.Label(label="Lüfter-Telemetrie wird gelesen …")
+        self.fan_curve_runtime_label.set_xalign(0)
+        self.fan_curve_runtime_label.set_line_wrap(True)
+        self.fan_curve_runtime_label.get_style_context().add_class("dim-label")
+        page.pack_start(self.fan_curve_runtime_label, False, False, 0)
+
+        visual_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        self.fan_animation_area = Gtk.DrawingArea()
+        self.fan_animation_area.set_size_request(72, 72)
+        self.fan_animation_area.connect("draw", self._draw_fan_animation)
+        visual_row.pack_start(self.fan_animation_area, False, False, 0)
+        visual_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        visual_text.set_valign(Gtk.Align.CENTER)
+        visual_text.pack_start(Gtk.Label(label="Aktuelle Lüfterleistung"), False, False, 0)
+        self.fan_live_progress = Gtk.ProgressBar()
+        self.fan_live_progress.set_show_text(True)
+        self.fan_live_progress.set_fraction(0.0)
+        self.fan_live_progress.set_text("Warte auf Lüfterdaten …")
+        visual_text.pack_start(self.fan_live_progress, False, False, 0)
+        visual_row.pack_start(visual_text, True, True, 0)
+        page.pack_start(visual_row, False, False, 4)
+
+        chart = Gtk.DrawingArea()
+        chart.set_size_request(600, 160)
+        chart.connect("draw", self._draw_fan_curve_chart)
+        self.fan_curve_chart = chart
+        page.pack_start(chart, False, False, 4)
+
         safety_note = Gtk.Label(label=(
-            "Sicherheitsgrenzen: Start spätestens bei 55 °C, vier aufsteigende Temperaturstufen "
-            "und mindestens 95 % Lüfterleistung in der letzten Stufe bei höchstens 75 °C. "
-            "Eine angepasste Kurve ist keine Garantie gegen Überhitzung."
+            "Schutzregeln: Lüfterstart spätestens bei 55 °C, mindestens 29 % ab der ersten Stufe, "
+            "keine sinkende Leistung bei höherer Temperatur und mindestens 95 % spätestens bei 75 °C. "
+            "Ab 80 °C wird unabhängig von der Kurve volle Leistung angefordert."
         ))
         safety_note.set_xalign(0)
         safety_note.set_line_wrap(True)
         safety_note.get_style_context().add_class("caution")
         page.pack_start(safety_note, False, False, 0)
 
-        self.fan_curve_runtime_label = Gtk.Label(label="Lüfter-Telemetrie wird gelesen …")
-        self.fan_curve_runtime_label.set_xalign(0)
-        self.fan_curve_runtime_label.get_style_context().add_class("dim-label")
-        page.pack_start(self.fan_curve_runtime_label, False, False, 0)
+        self.fan_curve_grid = Gtk.Grid()
+        self.fan_curve_grid.set_column_spacing(18)
+        self.fan_curve_grid.set_row_spacing(5)
+        self.fan_curve_grid.set_hexpand(False)
+        row_scroll = Gtk.ScrolledWindow()
+        row_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        row_scroll.set_min_content_height(230)
+        row_scroll.set_max_content_height(310)
+        row_scroll.add(self.fan_curve_grid)
+        page.pack_start(row_scroll, True, True, 0)
 
-        grid = Gtk.Grid()
-        grid.set_column_spacing(18)
-        grid.set_row_spacing(10)
-        grid.set_hexpand(False)
-        for column, heading in enumerate(("Stufe", "Temperatur (°C)", "Lüfterleistung (%)")):
-            label = Gtk.Label(label=heading)
-            label.set_xalign(0)
-            label.set_markup(f"<b>{heading}</b>")
-            grid.attach(label, column, 0, 1, 1)
-
-        for index, point in enumerate(DEFAULT_FAN_CURVE):
-            row = index + 1
-            label = Gtk.Label(label=f"Stufe {row}")
-            label.set_xalign(0)
-            temperature = Gtk.SpinButton.new_with_range(40.0, 75.0, 0.5)
-            temperature.set_digits(1)
-            temperature.set_value(point["temperature_c"])
-            speed = Gtk.SpinButton.new_with_range(MIN_FAN_SPEED_PERCENT[index], 100, 1)
-            speed.set_digits(0)
-            speed.set_value(point["speed_percent"])
-            grid.attach(label, 0, row, 1, 1)
-            grid.attach(temperature, 1, row, 1, 1)
-            grid.attach(speed, 2, row, 1, 1)
-            self.fan_curve_temp_spins.append(temperature)
-            self.fan_curve_speed_spins.append(speed)
-        page.pack_start(grid, False, False, 4)
+        stage_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.fan_add_stage_button = Gtk.Button(label="＋ Stufe hinzufügen")
+        self.fan_add_stage_button.connect("clicked", self.add_fan_curve_stage)
+        stage_buttons.pack_start(self.fan_add_stage_button, False, False, 0)
+        self.fan_remove_stage_button = Gtk.Button(label="− Letzte Zwischenstufe entfernen")
+        self.fan_remove_stage_button.connect("clicked", self.remove_fan_curve_stage)
+        stage_buttons.pack_start(self.fan_remove_stage_button, False, False, 0)
+        page.pack_start(stage_buttons, False, False, 0)
 
         hysteresis_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        hysteresis_label = Gtk.Label(label="Hysterese für alle Stufen (°C):")
+        hysteresis_label = Gtk.Label(label="Hysterese (°C):")
         hysteresis_label.set_xalign(0)
         hysteresis_row.pack_start(hysteresis_label, False, False, 0)
         self.fan_hysteresis_spin = Gtk.SpinButton.new_with_range(1.0, 10.0, 0.5)
         self.fan_hysteresis_spin.set_digits(1)
         self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
+        self.fan_hysteresis_spin.connect("value-changed", self._on_fan_curve_changed)
         hysteresis_row.pack_start(self.fan_hysteresis_spin, False, False, 0)
-        page.pack_start(hysteresis_row, False, False, 4)
+        page.pack_start(hysteresis_row, False, False, 2)
 
-        button_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        curve_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         reset_button = Gtk.Button(label="Standardkurve laden")
         reset_button.connect("clicked", self.reset_fan_curve)
-        button_row.pack_start(reset_button, False, False, 0)
-        read_button = Gtk.Button(label="Aus config.txt lesen")
+        curve_buttons.pack_start(reset_button, False, False, 0)
+        read_button = Gtk.Button(label="Gespeicherte Kurve laden")
         read_button.connect("clicked", self.load_fan_curve_from_config)
-        button_row.pack_start(read_button, False, False, 0)
-        self.fan_curve_apply_button = Gtk.Button(label="Lüfterkurve anwenden…")
+        curve_buttons.pack_start(read_button, False, False, 0)
+        self.fan_curve_apply_button = Gtk.Button(label="Kurve dauerhaft speichern")
         self.fan_curve_apply_button.get_style_context().add_class("suggested-action")
         self.fan_curve_apply_button.connect("clicked", self.apply_fan_curve_dialog)
-        self.fan_curve_apply_button.set_sensitive(bool(self.hardware.config_path))
-        button_row.pack_start(self.fan_curve_apply_button, False, False, 0)
-        page.pack_start(button_row, False, False, 4)
+        curve_buttons.pack_start(self.fan_curve_apply_button, False, False, 0)
+        page.pack_start(curve_buttons, False, False, 3)
 
-        self.fan_curve_status_label = Gtk.Label(label="Noch nicht angewendet.")
+        self.fan_curve_status_label = Gtk.Label(label="Noch keine eigene Kurve gespeichert.")
         self.fan_curve_status_label.set_xalign(0)
         self.fan_curve_status_label.set_line_wrap(True)
         self.fan_curve_status_label.get_style_context().add_class("dim-label")
         page.pack_start(self.fan_curve_status_label, False, False, 0)
 
+        live_heading = Gtk.Label()
+        live_heading.set_markup("<b>Live-Regler · vorübergehende manuelle Anpassung</b>")
+        live_heading.set_xalign(0)
+        page.pack_start(live_heading, False, False, 2)
+
+        live_note = Gtk.Label(label=(
+            "Der Live-Regler hält die gewählte Leistung höchstens fünf Minuten. "
+            "Er kann die automatische Kurve verstärken, aber niemals die gerade benötigte Kühlleistung unterschreiten. "
+            "Nach Ablauf oder Neustart übernimmt wieder die gespeicherte Kurve."
+        ))
+        live_note.set_xalign(0)
+        live_note.set_line_wrap(True)
+        live_note.get_style_context().add_class("dim-label")
+        page.pack_start(live_note, False, False, 0)
+
+        self.fan_live_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 29, 100, 1)
+        self.fan_live_scale.set_digits(0)
+        self.fan_live_scale.set_draw_value(True)
+        self.fan_live_scale.set_value(60)
+        self.fan_live_scale.connect("value-changed", self._on_fan_live_slider_changed)
+        page.pack_start(self.fan_live_scale, False, False, 0)
+
+        live_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        live_controls.pack_start(Gtk.Label(label="Dauer (Sekunden):"), False, False, 0)
+        self.fan_override_duration = Gtk.SpinButton.new_with_range(5, 300, 5)
+        self.fan_override_duration.set_value(60)
+        live_controls.pack_start(self.fan_override_duration, False, False, 0)
+        self.fan_override_button = Gtk.Button(label="Live-Leistung übernehmen")
+        self.fan_override_button.get_style_context().add_class("suggested-action")
+        self.fan_override_button.connect("clicked", self.apply_fan_override_dialog)
+        live_controls.pack_start(self.fan_override_button, False, False, 0)
+        self.fan_auto_button = Gtk.Button(label="Automatik sofort")
+        self.fan_auto_button.connect("clicked", self.clear_fan_override_dialog)
+        live_controls.pack_start(self.fan_auto_button, False, False, 0)
+        page.pack_start(live_controls, False, False, 0)
+
+        self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=False)
         self.load_fan_curve_from_config(announce=False)
+        self._update_fan_hwmon_status()
+        self._fan_animation_source_id = GLib.timeout_add(50, self._tick_fan_animation)
+
+    def _set_fan_curve_rows(self, points, animate=True):
+        for child in self.fan_curve_grid.get_children():
+            self.fan_curve_grid.remove(child)
+        self.fan_curve_row_widgets = []
+
+        for column, heading in enumerate(("Stufe", "Temperatur (°C)", "Lüfterleistung (%)")):
+            label = Gtk.Label(label=heading)
+            label.set_xalign(0)
+            label.set_markup(f"<b>{heading}</b>")
+            self.fan_curve_grid.attach(label, column, 0, 1, 1)
+
+        for index, point in enumerate(points):
+            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+            stage_label = Gtk.Label(label=f"Stufe {index + 1}")
+            stage_label.set_xalign(0)
+            stage_label.set_size_request(54, -1)
+            temperature = Gtk.SpinButton.new_with_range(40.0, 75.0, 0.5)
+            temperature.set_digits(1)
+            temperature.set_value(point["temperature_c"])
+            temperature.set_width_chars(6)
+            speed = Gtk.SpinButton.new_with_range(MIN_FAN_SPEED_PERCENT, 100, 1)
+            speed.set_digits(0)
+            speed.set_value(point["speed_percent"])
+            speed.set_width_chars(5)
+            temperature.connect("value-changed", self._on_fan_curve_changed)
+            speed.connect("value-changed", self._on_fan_curve_changed)
+            row_box.pack_start(stage_label, False, False, 0)
+            row_box.pack_start(temperature, False, False, 0)
+            row_box.pack_start(speed, False, False, 0)
+
+            reveal = Gtk.Revealer()
+            reveal.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+            reveal.set_transition_duration(220)
+            reveal.add(row_box)
+            self.fan_curve_grid.attach(reveal, 0, index + 1, 3, 1)
+            self.fan_curve_row_widgets.append({
+                "temperature": temperature,
+                "speed": speed,
+                "revealer": reveal,
+            })
+            reveal.show_all()
+            reveal.set_reveal_child(True)
+
+        self.fan_curve_grid.show_all()
+        self._update_fan_stage_buttons()
+        if hasattr(self, "fan_curve_chart"):
+            self.fan_curve_chart.queue_draw()
+
+    def _update_fan_stage_buttons(self):
+        if hasattr(self, "fan_add_stage_button"):
+            count = len(self.fan_curve_row_widgets)
+            self.fan_add_stage_button.set_sensitive(count < 10)
+            self.fan_remove_stage_button.set_sensitive(count > 2)
 
     def _current_fan_curve_values(self):
         points = [
             {
-                "temperature_c": spin.get_value(),
-                "speed_percent": spin.get_value_as_int(),
+                "temperature_c": row["temperature"].get_value(),
+                "speed_percent": row["speed"].get_value_as_int(),
             }
-            for spin, speed in zip(self.fan_curve_temp_spins, self.fan_curve_speed_spins)
+            for row in self.fan_curve_row_widgets
         ]
         return validate_fan_curve(points, self.fan_hysteresis_spin.get_value())
 
-    def reset_fan_curve(self, _button=None):
-        for index, point in enumerate(DEFAULT_FAN_CURVE):
-            self.fan_curve_temp_spins[index].set_value(point["temperature_c"])
-            self.fan_curve_speed_spins[index].set_value(point["speed_percent"])
-        self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
-        self.fan_curve_status_label.set_text("Dokumentierte Standardkurve geladen. Sie wird erst nach dem Anwenden gespeichert.")
+    def add_fan_curve_stage(self, _button=None):
+        try:
+            curve = self._current_fan_curve_values()
+        except ValueError as exc:
+            self.show_error("Bitte korrigiere zuerst die vorhandenen Stufen.\n\n" + str(exc))
+            return
+        points = [dict(point) for point in curve["points"]]
+        if len(points) >= 10:
+            return
+        previous = points[-2]
+        last = points[-1]
+        temperature = round(((previous["temperature_c"] + last["temperature_c"]) / 2) * 2) / 2
+        if temperature - previous["temperature_c"] < 0.5 or last["temperature_c"] - temperature < 0.5:
+            self.show_error("Zwischen den letzten Stufen ist nicht genug Platz für eine weitere Temperaturstufe.")
+            return
+        speed = int(round((previous["speed_percent"] + last["speed_percent"]) / 2))
+        speed = max(previous["speed_percent"], min(last["speed_percent"], speed))
+        points.insert(-1, {"temperature_c": temperature, "speed_percent": speed})
+        self._set_fan_curve_rows(points, animate=True)
 
-    def load_fan_curve_from_config(self, _button=None, announce=True):
-        if self.model_id != "pi5" or not self.hardware.config_path:
-            if announce:
-                self.show_error("Für dieses Gerät ist keine unterstützte Raspberry-Pi-5-Boot-Konfiguration verfügbar.")
+    def remove_fan_curve_stage(self, _button=None):
+        if len(self.fan_curve_row_widgets) <= 2:
             return
         try:
-            config_text = read_config(self.hardware.config_path)
-            curve = parse_fan_curve_config(config_text)
-            for index, point in enumerate(curve["points"]):
-                self.fan_curve_temp_spins[index].set_value(point["temperature_c"])
-                self.fan_curve_speed_spins[index].set_value(point["speed_percent"])
+            curve = self._current_fan_curve_values()
+            points = [dict(point) for point in curve["points"]]
+        except ValueError:
+            points = [
+                {
+                    "temperature_c": row["temperature"].get_value(),
+                    "speed_percent": row["speed"].get_value_as_int(),
+                }
+                for row in self.fan_curve_row_widgets
+            ]
+        points.pop(-2)
+        self._set_fan_curve_rows(points, animate=True)
+
+    def reset_fan_curve(self, _button=None):
+        self._set_fan_curve_rows(list(DEFAULT_FAN_CURVE), animate=True)
+        self.fan_hysteresis_spin.set_value(DEFAULT_HYSTERESIS_C)
+        self.fan_curve_status_label.set_text("Zehnstufige Standardkurve geladen. Sie wird erst beim Speichern dauerhaft aktiviert.")
+
+    def load_fan_curve_from_config(self, _button=None, announce=True):
+        try:
+            if FAN_CURVE_CONFIG_PATH.is_file():
+                curve = load_persistent_fan_curve()
+                label = "Dauerhaft gespeicherte Kurve geladen."
+            else:
+                legacy = ""
+                if self.hardware.config_path and self.hardware.config_path.is_file():
+                    legacy = read_config(self.hardware.config_path)
+                if "fan_temp" in legacy:
+                    curve = parse_fan_curve_config(legacy)
+                    label = "Ältere vierstufige config.txt-Kurve importiert. Beim Speichern wird sie auf zehn Stufen erweiterbar."
+                else:
+                    curve = validate_fan_curve(DEFAULT_FAN_CURVE, DEFAULT_HYSTERESIS_C)
+                    label = "Noch keine eigene Kurve gespeichert. Standardkurve geladen."
+            self._set_fan_curve_rows(curve["points"], animate=True)
             self.fan_hysteresis_spin.set_value(curve["hysteresis_c"])
-            self.fan_curve_status_label.set_text(
-                "Lüftereinstellungen aus config.txt eingelesen. Noch nicht geändert."
-            )
+            self.fan_curve_status_label.set_text(label)
             if announce:
-                self.show_info("Die aktuell konfigurierten Lüfterstufen wurden eingelesen.")
+                self.show_info(label)
         except (OSError, ValueError, TypeError, KeyError) as exc:
             if announce:
-                self.show_error(f"Lüfterkurve konnte nicht eingelesen werden: {exc}")
+                self.show_error(f"Lüfterkurve konnte nicht gelesen werden: {exc}")
             else:
-                self.fan_curve_status_label.set_text(f"Lüfterkurve konnte nicht automatisch gelesen werden: {exc}")
+                self.fan_curve_status_label.set_text(f"Gespeicherte Kurve konnte nicht gelesen werden: {exc}")
 
     def apply_fan_curve_dialog(self, _button=None):
-        if self.model_id != "pi5" or not self.hardware.config_path:
-            self.show_error("Die Lüfterkurven-Steuerung benötigt einen unterstützten Raspberry Pi 5.")
+        if self.model_id != "pi5" or find_hwmon_fan() is None:
+            self.show_error("Kein kompatibler PWM-Lüfter erkannt. Prüfe den offiziellen Raspberry-Pi-5-Lüfteranschluss.")
             return
         if self.benchmark_running:
             self.show_error("Bitte stoppe zuerst den laufenden Benchmark.")
@@ -949,45 +1105,239 @@ class TaktEngineWindow(Gtk.Window):
             self.show_error(str(exc))
             return
 
-        detail = (
-            "Vor dem Schreiben wird eine Sicherung der config.txt erstellt. "
-            "Die Firmware übernimmt die Kurve erst nach einem Neustart. "
-            "Diese Funktion ist für den integrierten Raspberry-Pi-5-Lüfteranschluss gedacht, "
-            "nicht für beliebige GPIO- oder USB-Lüfter."
-        )
         dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=Gtk.DialogFlags.MODAL,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
-            text="Lüfterkurve speichern?",
+            text="Lüfterkurve dauerhaft speichern?",
         )
-        dialog.format_secondary_text(detail)
+        dialog.format_secondary_text(
+            "Die Kurve wird unter /etc/takt-engine/fan-curve.json gespeichert. "
+            "Der Systemdienst startet sofort und lädt genau diese Kurve auch nach jedem Neustart. "
+            "Vorherige Einstellungen werden gesichert."
+        )
         dialog.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Sichern und speichern", Gtk.ResponseType.OK)
+        dialog.add_button("Speichern und aktivieren", Gtk.ResponseType.OK)
         response = dialog.run()
         dialog.destroy()
         if response != Gtk.ResponseType.OK:
             return
 
         self.fan_curve_apply_button.set_sensitive(False)
+        self._start_fan_save_animation()
         try:
-            backup, result = apply_fan_curve(
-                self.hardware.config_path,
-                curve["points"],
-                curve["hysteresis_c"],
-            )
+            result = apply_fan_curve(curve["points"], curve["hysteresis_c"])
             self.fan_curve_status_label.set_text(
-                "Lüfterkurve gespeichert. Ein Neustart ist erforderlich, damit die Firmware sie verwendet."
+                f"Gespeichert: {len(curve['points'])} Stufen · Systemdienst aktiv · wird nach jedem Neustart geladen."
             )
-            self.show_info(
-                (result.stdout or "Lüfterkurve gespeichert.").strip()
-                + f"\n\nSicherung: {backup}\nBitte den Raspberry Pi neu starten."
-            )
+            self.show_info((result.stdout or "Lüfterkurve gespeichert und aktiviert.").strip())
+            self._fan_status_pulse()
         except (OSError, RuntimeError, ValueError) as exc:
             self.show_error(str(exc))
         finally:
             self.fan_curve_apply_button.set_sensitive(True)
+            self._stop_fan_save_animation()
+
+    def _start_fan_save_animation(self):
+        self._fan_save_animation_stage = 0
+        if self._fan_save_animation_source_id is not None:
+            GLib.source_remove(self._fan_save_animation_source_id)
+        self._fan_save_animation_source_id = GLib.timeout_add(90, self._tick_fan_save_animation)
+
+    def _tick_fan_save_animation(self):
+        phases = (0, 1, 2, 1)
+        context = self.fan_curve_apply_button.get_style_context()
+        for name in ("apply-pulse-0", "apply-pulse-1", "apply-pulse-2", "apply-pulse-3"):
+            context.remove_class(name)
+        context.add_class(f"apply-pulse-{phases[self._fan_save_animation_stage % len(phases)]}")
+        self._fan_save_animation_stage += 1
+        return self._fan_save_animation_stage < 12
+
+    def _stop_fan_save_animation(self):
+        if self._fan_save_animation_source_id is not None:
+            GLib.source_remove(self._fan_save_animation_source_id)
+            self._fan_save_animation_source_id = None
+        if hasattr(self, "fan_curve_apply_button"):
+            context = self.fan_curve_apply_button.get_style_context()
+            for name in ("apply-pulse-0", "apply-pulse-1", "apply-pulse-2", "apply-pulse-3"):
+                context.remove_class(name)
+
+    def _fan_status_pulse(self):
+        if not hasattr(self, "fan_curve_status_label"):
+            return
+        context = self.fan_curve_status_label.get_style_context()
+        context.add_class("safety-ok")
+        GLib.timeout_add(900, lambda: (context.remove_class("safety-ok"), False)[1])
+
+    def _on_fan_curve_changed(self, _widget=None):
+        if hasattr(self, "fan_curve_chart"):
+            self.fan_curve_chart.queue_draw()
+        try:
+            curve = self._current_fan_curve_values()
+        except ValueError:
+            self.fan_curve_status_label.set_text("Kurve noch nicht gültig – prüfe Reihenfolge, Temperaturen und Drehzahlen.")
+            return
+        self.fan_curve_status_label.set_text(
+            f"{len(curve['points'])} Stufen · Änderungen noch nicht gespeichert."
+        )
+
+    def _draw_fan_curve_chart(self, widget, cr):
+        width = max(1, widget.get_allocated_width())
+        height = max(1, widget.get_allocated_height())
+        cr.set_source_rgb(0.125, 0.122, 0.114)
+        cr.rectangle(0, 0, width, height)
+        cr.fill()
+        left, right, top, bottom = 42, width - 18, 18, height - 30
+        if right <= left or bottom <= top:
+            return False
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(10)
+        for percent in (0, 25, 50, 75, 100):
+            y = bottom - (bottom - top) * percent / 100
+            cr.set_source_rgb(0.36, 0.34, 0.31)
+            cr.move_to(left, y)
+            cr.line_to(right, y)
+            cr.stroke()
+            cr.set_source_rgb(0.72, 0.68, 0.63)
+            cr.move_to(5, y + 4)
+            cr.show_text(str(percent))
+        for temp in (40, 50, 60, 70, 80):
+            x = left + (right - left) * (temp - 40) / 40
+            cr.set_source_rgb(0.36, 0.34, 0.31)
+            cr.move_to(x, top)
+            cr.line_to(x, bottom)
+            cr.stroke()
+            cr.set_source_rgb(0.72, 0.68, 0.63)
+            cr.move_to(x - 8, height - 8)
+            cr.show_text(str(temp))
+        try:
+            points = self._current_fan_curve_values()["points"]
+        except (ValueError, AttributeError):
+            return False
+        cr.set_source_rgb(0.91, 0.49, 0.28)
+        cr.set_line_width(2.5)
+        for index, point in enumerate(points):
+            x = left + (right - left) * (point["temperature_c"] - 40) / 40
+            y = bottom - (bottom - top) * point["speed_percent"] / 100
+            if index == 0:
+                cr.move_to(x, y)
+            else:
+                cr.line_to(x, y)
+        cr.stroke()
+        for point in points:
+            x = left + (right - left) * (point["temperature_c"] - 40) / 40
+            y = bottom - (bottom - top) * point["speed_percent"] / 100
+            cr.arc(x, y, 4.5, 0, 6.283185307)
+            cr.set_source_rgb(0.98, 0.72, 0.51)
+            cr.fill()
+            cr.set_source_rgb(0.91, 0.49, 0.28)
+        return False
+
+    def _draw_fan_animation(self, widget, cr):
+        width = max(1, widget.get_allocated_width())
+        height = max(1, widget.get_allocated_height())
+        cx, cy = width / 2, height / 2
+        cr.save()
+        cr.translate(cx, cy)
+        cr.rotate(self.fan_animation_angle)
+        cr.set_source_rgb(0.86, 0.43, 0.24)
+        for _index in range(7):
+            cr.move_to(0, -5)
+            cr.curve_to(9, -13, 15, -23, 5, -28)
+            cr.curve_to(-3, -32, -8, -20, -5, -8)
+            cr.close_path()
+            cr.fill()
+            cr.rotate(0.897597901)
+        cr.set_source_rgb(0.96, 0.72, 0.52)
+        cr.arc(0, 0, 6, 0, 6.283185307)
+        cr.fill()
+        cr.restore()
+        return False
+
+    def _tick_fan_animation(self):
+        if not self.get_visible():
+            return True
+        speed = max(0, min(100, self.fan_current_percent))
+        if speed > 0:
+            self.fan_animation_angle = (self.fan_animation_angle + 0.025 + speed * 0.0025) % 6.283185307
+        if hasattr(self, "fan_animation_area"):
+            self.fan_animation_area.queue_draw()
+        return True
+
+    def _on_fan_live_slider_changed(self, _scale):
+        if not hasattr(self, "fan_live_scale"):
+            return
+        value = self.fan_live_scale.get_value_as_int()
+        duration = self.fan_override_duration.get_value_as_int() if hasattr(self, "fan_override_duration") else 60
+        if hasattr(self, "fan_live_progress"):
+            self.fan_live_progress.set_fraction(value / 100.0)
+            self.fan_live_progress.set_text(f"Vorschau: {value} %")
+        if hasattr(self, "fan_curve_runtime_label"):
+            self.fan_curve_runtime_label.set_tooltip_text(
+                f"Manueller Wert {value} % für {duration} Sekunden. Die Temperaturkurve bleibt Sicherheits-Untergrenze."
+            )
+
+    def apply_fan_override_dialog(self, _button=None):
+        if self.model_id != "pi5" or find_hwmon_fan() is None:
+            self.show_error("Kein kompatibler PWM-Lüfter erkannt.")
+            return
+        speed = self.fan_live_scale.get_value_as_int()
+        duration = self.fan_override_duration.get_value_as_int()
+        try:
+            result = apply_fan_override(speed, duration)
+            self.fan_curve_status_label.set_text(
+                f"Live-Override: mindestens {speed} % für {duration} Sekunden. Die gespeicherte Kurve bleibt aktiv."
+            )
+            self.show_info((result.stdout or "Vorübergehende Lüfterleistung angefordert.").strip())
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.show_error(str(exc))
+
+    def clear_fan_override_dialog(self, _button=None):
+        try:
+            result = clear_fan_override()
+            self.fan_curve_status_label.set_text("Automatik wieder aktiv: die gespeicherte Temperaturkurve steuert den Lüfter.")
+            self.show_info((result.stdout or "Automatische Kurvensteuerung wiederhergestellt.").strip())
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.show_error(str(exc))
+
+    def _update_fan_hwmon_status(self):
+        if not hasattr(self, "fan_curve_runtime_label"):
+            return
+        state = read_hwmon_fan_state()
+        if state is None:
+            self.fan_curve_runtime_label.set_text(
+                "Kein pwm-fan-Gerät gefunden. Verbinde einen kompatiblen Lüfter am Pi-5-PWM-Anschluss."
+            )
+            self.fan_curve_apply_button.set_sensitive(False)
+            self.fan_override_button.set_sensitive(False)
+            self.fan_auto_button.set_sensitive(False)
+            self.fan_live_scale.set_sensitive(False)
+            return
+        self.fan_curve_apply_button.set_sensitive(True)
+        self.fan_override_button.set_sensitive(True)
+        self.fan_auto_button.set_sensitive(True)
+        self.fan_live_scale.set_sensitive(True)
+        self.fan_current_percent = state["speed_percent"]
+        self.fan_current_rpm = state["rpm"]
+        percent_text = f"{state['speed_percent']} %"
+        rpm_text = f"{state['rpm']} RPM" if state["rpm"] is not None else "RPM nicht verfügbar"
+        temperature = f"{self.fan_last_temperature:.1f} °C" if self.fan_last_temperature is not None else "Temperatur wird gelesen"
+        self.fan_curve_runtime_label.set_text(
+            f"SoC: {temperature} · PWM: {percent_text} · Drehzahl: {rpm_text}"
+        )
+        self.fan_live_progress.set_fraction(state["speed_percent"] / 100.0)
+        self.fan_live_progress.set_text(f"{percent_text} · {rpm_text}")
+        try:
+            curve = self._current_fan_curve_values()
+            auto_floor = MIN_FAN_SPEED_PERCENT
+            if self.fan_last_temperature is not None:
+                auto_floor = curve_speed_for_temperature(
+                    self.fan_last_temperature, curve["points"], curve["hysteresis_c"]
+                )[0]
+            self.fan_live_scale.set_range(max(MIN_FAN_SPEED_PERCENT, auto_floor), 100)
+        except (ValueError, AttributeError):
+            self.fan_live_scale.set_range(MIN_FAN_SPEED_PERCENT, 100)
 
     def _draw_monitor_chart(self, widget, cr):
         width = max(1, widget.get_allocated_width())
@@ -1895,6 +2245,8 @@ class TaktEngineWindow(Gtk.Window):
             self.fan_curve_runtime_label.set_text(
                 f"SoC: {_format_temperature(status.temperature_c)} · Aktuelle Lüfterdrehzahl: {fan_text}"
             )
+        self.fan_last_temperature = status.temperature_c
+        self._update_fan_hwmon_status()
         if hasattr(self, "cooling_label"):
             fan_text = f"{status.fan_rpm} RPM" if status.fan_rpm is not None else "Lüfterdrehzahl nicht verfügbar"
             cooling_text = status.cooling_states or "keine Cooling-Device-Statuswerte verfügbar"
@@ -2140,6 +2492,13 @@ class TaktEngineWindow(Gtk.Window):
     def on_close(self, *_args):
         if self.benchmark_running:
             self.benchmark_stop.set()
+        if getattr(self, "_fan_animation_source_id", None) is not None:
+            try:
+                GLib.source_remove(self._fan_animation_source_id)
+            except Exception:
+                pass
+            self._fan_animation_source_id = None
+        self._stop_fan_save_animation()
         for source_id in list(self._clock_gradient_animation_sources.values()):
             try:
                 GLib.source_remove(source_id)
