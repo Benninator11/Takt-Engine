@@ -7,6 +7,7 @@ from typing import Mapping
 
 from .config import create_backup
 from .limits import validate_values
+from .fan_curve import validate_fan_curve, render_fan_curve_config
 
 
 def apply_settings(config_path: Path, model_id: str, values: Mapping[str, int], arm_rollback: bool = False) -> tuple[Path, subprocess.CompletedProcess[str]]:
@@ -28,6 +29,35 @@ def apply_settings(config_path: Path, model_id: str, values: Mapping[str, int], 
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "Abgebrochen oder fehlgeschlagen.").strip()
         raise RuntimeError(f"Konfiguration wurde nicht angewendet. Sicherung bleibt erhalten: {backup}\n{detail}")
+    return backup, result
+
+
+
+def apply_fan_curve(
+    config_path: Path,
+    points,
+    hysteresis_c: float = 5.0,
+) -> tuple[Path, subprocess.CompletedProcess[str]]:
+    """Back up config.txt, then apply a validated Raspberry Pi 5 fan curve."""
+    normalized = validate_fan_curve(points, hysteresis_c)
+    backup = create_backup(config_path)
+    helper = Path(__file__).resolve().parents[1] / "privileged_writer.py"
+    payload = json.dumps(normalized, separators=(",", ":"))
+    command = [
+        "pkexec", sys.executable, str(helper),
+        "--config", str(config_path),
+        "--model", "pi5",
+        "--fan-curve", payload,
+    ]
+    try:
+        result = subprocess.run(command, text=True, capture_output=True, check=False, timeout=30)
+    except FileNotFoundError as exc:
+        raise RuntimeError("pkexec wurde nicht gefunden. Installiere pkexec und polkitd oder nutze das Installationsskript.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Die Lüfterkurve wurde nicht bestätigt. Die Sicherung bleibt erhalten: {backup}") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "Abgebrochen oder fehlgeschlagen.").strip()
+        raise RuntimeError(f"Lüfterkurve wurde nicht angewendet. Sicherung bleibt erhalten: {backup}\n{detail}")
     return backup, result
 
 
