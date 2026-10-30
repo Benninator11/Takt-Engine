@@ -53,7 +53,7 @@ def validate_fan_curve(
     points: Sequence[Mapping[str, object]],
     hysteresis_c: object = DEFAULT_HYSTERESIS_C,
 ) -> dict:
-    """Validate a two-to-ten-stage curve with conservative thermal guardrails."""
+    """Validate a four-to-ten-stage curve with conservative thermal guardrails."""
     if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not 4 <= len(points) <= 10:
         raise ValueError("Eine Lüfterkurve muss zwischen 4 und 10 Temperaturstufen enthalten.")
 
