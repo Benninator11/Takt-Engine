@@ -115,7 +115,7 @@ def _read_restore_backup(path: Path, requester_uid: int) -> str:
         payload = handle.read(MAX_RESTORE_BACKUP_BYTES + 1)
         if len(payload) > MAX_RESTORE_BACKUP_BYTES:
             raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
-        if b"\\x00" in payload:
+        if bytes((0,)) in payload:
             raise ValueError("Die Sicherung enthält unzulässige NUL-Bytes.")
         try:
             return payload.decode("utf-8")
