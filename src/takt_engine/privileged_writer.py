@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import pwd
+import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -13,7 +15,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from takt_engine.core.config import read_config, render_managed_config, write_config_atomically  # noqa: E402
 from takt_engine.core.limits import ValidationError, validate_values  # noqa: E402
-from takt_engine.core.fan_curve import render_fan_curve_config  # noqa: E402
+from takt_engine.core.fan_curve import (  # noqa: E402
+    FAN_CURVE_CONFIG_PATH,
+    clear_fan_override,
+    create_fan_override,
+    find_hwmon_fan,
+    save_persistent_fan_curve,
+)
 
 ALLOWED_CONFIG_PATHS = {Path("/boot/firmware/config.txt"), Path("/boot/config.txt")}
 ROLLBACK_DIR = Path("/var/lib/takt-engine/rollback")
@@ -95,9 +103,12 @@ def main() -> int:
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--values", help="JSON-Objekt mit freigegebenen Werten")
     operation.add_argument("--fan-curve", help="JSON-Lüfterkurve für den Raspberry Pi 5")
+    operation.add_argument("--fan-override", type=int, help="Vorübergehende manuelle Lüfterleistung in Prozent")
+    operation.add_argument("--clear-fan-override", action="store_true", help="Manuellen Lüfter-Override entfernen")
     operation.add_argument("--restore-backup", help="Pfad zu einer Takt-Engine-Sicherung")
     operation.add_argument("--confirm-rollback", action="store_true", help="Teststart bestätigen und automatischen Rollback deaktivieren")
     parser.add_argument("--arm-rollback", action="store_true", help="Vorherige Konfiguration als Teststart-Sicherung hinterlegen")
+    parser.add_argument("--override-seconds", type=int, default=60)
     args = parser.parse_args()
     try:
         if args.confirm_rollback:
@@ -106,6 +117,58 @@ def main() -> int:
             _confirm_rollback()
             print("Teststart bestätigt; automatische Rückkehr deaktiviert.")
             return 0
+        if args.fan_curve is not None or args.fan_override is not None or args.clear_fan_override:
+            if args.model != "pi5" or args.config or args.arm_rollback:
+                raise ValueError("Die Lüftersteuerung ist nur für den Raspberry Pi 5 vorgesehen und benötigt keinen config.txt-Pfad.")
+            if not find_hwmon_fan():
+                raise ValueError("Kein unterstützter PWM-Lüfter gefunden. Prüfe den offiziellen Pi-5-Lüfteranschluss und den Linux-Treiber.")
+            service_file = Path("/etc/systemd/system/takt-engine-fan.service")
+            if not service_file.is_file():
+                raise ValueError("Der Lüfterdienst fehlt. Bitte Takt Engine mit scripts/install-deps.sh neu installieren.")
+            if args.fan_curve is not None:
+                payload = json.loads(args.fan_curve)
+                if not isinstance(payload, dict):
+                    raise ValueError("Die Lüfterkurve muss als JSON-Objekt übergeben werden.")
+                backup = save_persistent_fan_curve(
+                    payload.get("points"),
+                    payload.get("hysteresis_c", 5.0),
+                )
+                try:
+                    subprocess.run(["systemctl", "daemon-reload"], check=True, capture_output=True, text=True, timeout=20)
+                    result = subprocess.run(
+                        ["systemctl", "enable", "--now", "takt-engine-fan.service"],
+                        check=False, capture_output=True, text=True, timeout=30,
+                    )
+                    if result.returncode != 0:
+                        raise ValueError((result.stderr or result.stdout or "Lüfterdienst konnte nicht gestartet werden.").strip())
+                except Exception:
+                    if backup and backup.is_file():
+                        shutil.copy2(backup, FAN_CURVE_CONFIG_PATH)
+                    else:
+                        FAN_CURVE_CONFIG_PATH.unlink(missing_ok=True)
+                    raise
+                print(f"Lüfterkurve dauerhaft gespeichert: {FAN_CURVE_CONFIG_PATH}")
+                print("Der systemd-Dienst wird bei jedem Systemstart automatisch gestartet.")
+                if backup:
+                    print(f"Vorherige Kurve gesichert unter: {backup}")
+                return 0
+            if args.fan_override is not None:
+                create_fan_override(args.fan_override, args.override_seconds)
+                result = subprocess.run(
+                    ["systemctl", "start", "takt-engine-fan.service"],
+                    check=False, capture_output=True, text=True, timeout=20,
+                )
+                if result.returncode != 0:
+                    clear_fan_override()
+                    raise ValueError((result.stderr or result.stdout or "Lüfterdienst konnte nicht gestartet werden.").strip())
+                print(f"Manuelle Lüfterleistung {args.fan_override}% für {args.override_seconds} Sekunden angefordert.")
+                return 0
+            clear_fan_override()
+            print("Manueller Lüfter-Override entfernt; die gespeicherte Temperaturkurve ist wieder aktiv.")
+            return 0
+
+        if args.override_seconds != 60:
+            raise ValueError("--override-seconds darf nur zusammen mit --fan-override verwendet werden.")
         if not args.config or not args.model:
             raise ValueError("--config und --model sind für diese Operation erforderlich.")
         path = Path(args.config)
@@ -133,23 +196,6 @@ def main() -> int:
             return 0
         if ROLLBACK_PENDING.exists():
             raise ValueError("Ein sicheres Testprofil wartet noch auf Bestätigung oder Rückkehr. Weitere Änderungen sind bis dahin gesperrt.")
-        if args.fan_curve is not None:
-            if args.model != "pi5":
-                raise ValueError("Die integrierte Lüfterkurve wird nur für den Raspberry Pi 5 unterstützt.")
-            if args.arm_rollback:
-                raise ValueError("Die Lüfterkurve kann nicht mit dem Takt-Testprofil-Rollback kombiniert werden.")
-            payload = json.loads(args.fan_curve)
-            if not isinstance(payload, dict):
-                raise ValueError("Die Lüfterkurve muss als JSON-Objekt übergeben werden.")
-            current = read_config(path)
-            updated = render_fan_curve_config(
-                current,
-                payload.get("points"),
-                payload.get("hysteresis_c", 5.0),
-            )
-            write_config_atomically(path, updated)
-            print(f"Lüfterkurve für den Raspberry Pi 5 wurde in {path} gespeichert. Ein Neustart ist erforderlich.")
-            return 0
         values = json.loads(args.values)
         if not isinstance(values, dict):
             raise ValueError("Werte müssen ein JSON-Objekt sein.")
