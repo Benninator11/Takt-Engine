@@ -1,4 +1,4 @@
-"""Persistent, validated Raspberry Pi 5 fan-curve profiles and hwmon access."""
+"""Validated Raspberry Pi 5 firmware fan curves and hwmon access."""
 from __future__ import annotations
 
 import math
