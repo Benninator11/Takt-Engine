@@ -13,9 +13,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Run project tests
-        run: bash scripts/test.sh
+      - name: Install GTK3 and virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 xvfb xauth
+      - name: Run project tests with GTK smoke test
+        env:
+          PATH: /usr/bin:/bin
+        run: xvfb-run -a bash scripts/test.sh
