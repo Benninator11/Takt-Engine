@@ -1,8 +1,16 @@
 # Takt Engine
 
-**Version 1.5.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.5.1** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.5.1
+
+- **Lüftersteuerung repariert:** Die vorherige Takt-Engine-Hintergrundsteuerung schrieb direkt in PWM, während der Pi-5-Kernel denselben Lüfter bereits temperaturabhängig verwaltet. Dieser Konflikt wurde entfernt.
+- Die automatische Lüfterkurve nutzt jetzt die native Raspberry-Pi-5-Firmwaresteuerung über \`dtparam=fan_tempN\`, \`fan_tempN_hyst\` und \`fan_tempN_speed\` in \`config.txt\`. Sie läuft nach dem Neustart auch ohne geöffnete App.
+- Die Firmware stellt vier Stufen bereit. Der Balken verändert jetzt die Lüfterleistung der im Auswahlfeld markierten Stufe; Temperatur und Drehzahl werden separat als Istwerte angezeigt.
+- Änderungen werden vor dem Schreiben gesichert und erfordern einen Neustart. Der Installer deaktiviert und entfernt den alten konkurrierenden PWM-Dienst.
+- Fehlende RPM-/PWM-Telemetrie verhindert nicht mehr das Bearbeiten und Speichern der Firmwarekurve.
 
 ## Änderungen in 1.5.0
 
@@ -78,7 +86,7 @@
 Aus Version 1.1.0 bleiben erhalten: Live-Monitoring, Benchmark-Historie, Vorschau des Konfigurations-Diffs, eigene Profile, Diagnoseexport, Sicherheitsbanner, Backups/Wiederherstellung, Desktop-Verknüpfung und zehn eingebaute Profile.
 
 ## Installation auf Raspberry Pi OS
-Die erweiterte Lüftersteuerung benötigt einen Raspberry Pi 5 mit kompatiblem Lüfter am offiziellen PWM-Anschluss. Installiere das aktualisierte Projekt mit dem Installationsskript neu, bevor du die Lüfterkurve in der App speicherst. Der Systemdienst wird erst beim ersten Speichern der Kurve aktiviert.
+Die native Lüfterkurve benötigt einen Raspberry Pi 5 mit kompatiblem Lüfter am offiziellen PWM-Anschluss. Installiere die aktualisierte Version mit dem Installationsskript neu. Dabei wird der frühere Takt-Engine-PWM-Hintergrunddienst deaktiviert, damit er nicht mit der Kernel-/Firmwaresteuerung konkurriert. Die neue Lüfterkurve wird in config.txt gespeichert und nach einem Neustart aktiv.
 
 
 1. Den Projektordner auf dem Pi entpacken.
