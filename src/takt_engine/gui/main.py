@@ -1258,12 +1258,17 @@ class TaktEngineWindow(Gtk.Window):
             self.fan_curve_chart.queue_draw()
         try:
             curve = self._current_fan_curve_values()
-        except ValueError:
-            self.fan_curve_status_label.set_text("Kurve noch nicht gültig – prüfe Reihenfolge, Temperaturen und Drehzahlen.")
+        except ValueError as exc:
+            self.fan_curve_status_label.set_text(
+                "Kurve noch nicht gültig – prüfe Reihenfolge, Temperaturen und Drehzahlen. "
+                + str(exc)
+            )
             return
         self.fan_curve_status_label.set_text(
-            f"{len(curve['points'])} Stufen · Änderungen noch nicht gespeichert."
+            "4 Firmware-Stufen · Änderungen noch nicht gespeichert."
         )
+        if not getattr(self, "_fan_slider_syncing", False):
+            self._refresh_fan_stage_control()
 
     def _draw_fan_curve_chart(self, widget, cr):
         width = max(1, widget.get_allocated_width())
@@ -1348,98 +1353,40 @@ class TaktEngineWindow(Gtk.Window):
             self.fan_animation_area.queue_draw()
         return True
 
-    def _on_fan_slider_press(self, _widget, _event):
-        self._fan_slider_dragging = True
-        return False
-
-    def _on_fan_slider_release(self, _widget, _event):
-        self._fan_slider_dragging = False
-        self._on_fan_live_slider_changed(self.fan_live_scale)
-        return False
-
-    def _on_fan_live_slider_changed(self, _scale):
-        if not hasattr(self, "fan_live_scale"):
-            return
-        value = self.fan_live_scale.get_value_as_int()
-        duration = self.fan_override_duration.get_value_as_int() if hasattr(self, "fan_override_duration") else 60
-        if not getattr(self, "_fan_slider_syncing", False):
-            self._fan_slider_has_manual_selection = True
-        if hasattr(self, "fan_live_actual_label") and getattr(self, "_fan_slider_has_manual_selection", False):
-            self.fan_live_actual_label.set_text(
-                f"Istwert wird separat angezeigt · Ausgewählter Zielwert: {value} % · {duration} Sekunden"
-            )
-        if hasattr(self, "fan_curve_runtime_label"):
-            self.fan_curve_runtime_label.set_tooltip_text(
-                f"Manueller Wert {value} % für {duration} Sekunden. Die Temperaturkurve bleibt Sicherheits-Untergrenze."
-            )
-
-    def apply_fan_override_dialog(self, _button=None):
-        if self.model_id != "pi5" or find_hwmon_fan() is None:
-            self.show_error("Kein kompatibler PWM-Lüfter erkannt.")
-            return
-        speed = self.fan_live_scale.get_value_as_int()
-        duration = self.fan_override_duration.get_value_as_int()
-        try:
-            result = apply_fan_override(speed, duration)
-            self.fan_curve_status_label.set_text(
-                f"Live-Override: mindestens {speed} % für {duration} Sekunden. Die gespeicherte Kurve bleibt aktiv."
-            )
-            self.show_info((result.stdout or "Vorübergehende Lüfterleistung angefordert.").strip())
-        except (OSError, RuntimeError, ValueError) as exc:
-            self.show_error(str(exc))
-
-    def clear_fan_override_dialog(self, _button=None):
-        try:
-            result = clear_fan_override()
-            self._fan_slider_has_manual_selection = False
-            self._update_fan_hwmon_status()
-            self.fan_curve_status_label.set_text("Automatik wieder aktiv: die gespeicherte Temperaturkurve steuert den Lüfter.")
-            self.show_info((result.stdout or "Automatische Kurvensteuerung wiederhergestellt.").strip())
-        except (OSError, RuntimeError, ValueError) as exc:
-            self.show_error(str(exc))
-
     def _update_fan_hwmon_status(self):
         if not hasattr(self, "fan_curve_runtime_label"):
             return
         state = read_hwmon_fan_state()
-        if state is None:
-            self.fan_curve_runtime_label.set_text(
-                "Kein pwm-fan-Gerät gefunden. Verbinde einen kompatiblen Lüfter am Pi-5-PWM-Anschluss."
-            )
-            self.fan_curve_apply_button.set_sensitive(False)
-            self.fan_override_button.set_sensitive(False)
-            self.fan_auto_button.set_sensitive(False)
-            self.fan_live_scale.set_sensitive(False)
-            return
-        self.fan_curve_apply_button.set_sensitive(True)
-        self.fan_override_button.set_sensitive(True)
-        self.fan_auto_button.set_sensitive(True)
+        temperature = (
+            f"{self.fan_last_temperature:.1f} °C"
+            if self.fan_last_temperature is not None else "nicht verfügbar"
+        )
+        # Telemetry is optional. The firmware curve can still be edited and
+        # saved even when a kernel build does not expose the hwmon RPM files.
+        self.fan_curve_apply_button.set_sensitive(
+            bool(self.hardware.config_path and self.hardware.config_path.is_file())
+        )
         self.fan_live_scale.set_sensitive(True)
+        if state is None:
+            self.fan_current_percent = 0
+            self.fan_current_rpm = None
+            self.fan_curve_runtime_label.set_text(
+                f"SoC: {temperature} · Lüfter-PWM/RPM-Telemetrie nicht verfügbar. "
+                "Die native Firmwarekurve kann trotzdem gespeichert werden."
+            )
+            self.fan_live_actual_label.set_text("Istwert: PWM/RPM nicht verfügbar")
+            return
+
         self.fan_current_percent = state["speed_percent"]
         self.fan_current_rpm = state["rpm"]
         percent_text = f"{state['speed_percent']} %"
         rpm_text = f"{state['rpm']} RPM" if state["rpm"] is not None else "RPM nicht verfügbar"
-        temperature = f"{self.fan_last_temperature:.1f} °C" if self.fan_last_temperature is not None else "Temperatur wird gelesen"
         self.fan_curve_runtime_label.set_text(
-            f"SoC: {temperature} · PWM: {percent_text} · Drehzahl: {rpm_text}"
+            f"SoC: {temperature} · aktueller PWM-Wert: {percent_text} · Drehzahl: {rpm_text}"
         )
-        self.fan_live_actual_label.set_text(f"Istwert: {percent_text} · {rpm_text}")
-        if not getattr(self, "_fan_slider_dragging", False) and not getattr(self, "_fan_slider_has_manual_selection", False):
-            self._fan_slider_syncing = True
-            try:
-                self.fan_live_scale.set_value(state["speed_percent"])
-            finally:
-                self._fan_slider_syncing = False
-        try:
-            curve = self._current_fan_curve_values()
-            auto_floor = MIN_FAN_SPEED_PERCENT
-            if self.fan_last_temperature is not None:
-                auto_floor = curve_speed_for_temperature(
-                    self.fan_last_temperature, curve["points"], curve["hysteresis_c"]
-                )[0]
-            self.fan_live_scale.set_range(max(MIN_FAN_SPEED_PERCENT, auto_floor), 100)
-        except (ValueError, AttributeError):
-            self.fan_live_scale.set_range(MIN_FAN_SPEED_PERCENT, 100)
+        self.fan_live_actual_label.set_text(
+            f"Istwert: {percent_text} · {rpm_text}"
+        )
 
     def _draw_monitor_chart(self, widget, cr):
         width = max(1, widget.get_allocated_width())
