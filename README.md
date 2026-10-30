@@ -6,10 +6,10 @@
 
 ## Änderungen in 1.4.0
 
-- Die Lüfterkurve kann jetzt aus **2 bis 10 Stufen** bestehen. Temperatur und Lüfterleistung sind je Stufe einstellbar; eine Kurvengrafik zeigt den Verlauf.
+- Die Lüfterkurve kann jetzt aus **4 bis 10 Stufen** bestehen. Temperatur und Lüfterleistung sind je Stufe einstellbar; eine Kurvengrafik zeigt den Verlauf.
 - Die Kurve wird dauerhaft in `/etc/takt-engine/fan-curve.json` gespeichert. Beim ersten Speichern wird der Systemdienst `takt-engine-fan.service` aktiviert; er lädt das Profil auch nach jedem Neustart.
 - Ein Live-Regler kann die Lüfterleistung für 5 bis 300 Sekunden vorübergehend erhöhen. Er kann die aktuelle temperaturabhängige Mindestleistung nicht unterschreiten; nach Ablauf oder Neustart ist wieder die gespeicherte Kurve aktiv.
-- Sicherheitsverhalten: mindestens 29 % ab der ersten Stufe, letzter Punkt spätestens bei 75 °C mit mindestens 95 %, volle Leistung ab 80 °C und volle Leistung, falls die Temperatur nicht gelesen werden kann.
+- Sicherheitsverhalten: mindestens 29 % bei 50 °C, 49 % bei 60 °C, 69 % bei 67,5 °C und 95 % bei 75 °C, volle Leistung ab 80 °C und volle Leistung, falls die Temperatur nicht gelesen werden kann.
 - Animationen: rotierende Lüftergrafik, animiert einblendende Kurvenstufen, Live-Leistungsbalken, Kurvendiagramm und animierte Rückmeldung beim Speichern.
 - Die Steuerung verwendet die Linux-`pwm-fan`-Schnittstelle des kompatiblen Raspberry-Pi-5-Lüfters. Die native Firmware-Konfiguration unterstützt weiterhin nur vier `fan_tempN`-Stufen; ältere Vier-Stufen-Kurven können importiert werden.
 ## Änderungen in 1.3.0
