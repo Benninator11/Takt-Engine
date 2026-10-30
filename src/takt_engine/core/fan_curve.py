@@ -54,8 +54,8 @@ def validate_fan_curve(
     hysteresis_c: object = DEFAULT_HYSTERESIS_C,
 ) -> dict:
     """Validate a two-to-ten-stage curve with conservative thermal guardrails."""
-    if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not 2 <= len(points) <= 10:
-        raise ValueError("Eine Lüfterkurve muss zwischen 2 und 10 Temperaturstufen enthalten.")
+    if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not 4 <= len(points) <= 10:
+        raise ValueError("Eine Lüfterkurve muss zwischen 4 und 10 Temperaturstufen enthalten.")
 
     normalized = []
     previous_temp = None
@@ -71,8 +71,8 @@ def validate_fan_curve(
             raise ValueError("Temperaturen müssen in 0,5-°C-Schritten eingestellt werden.")
         if temperature < 40.0 or temperature > 75.0:
             raise ValueError("Temperaturstufen müssen zwischen 40 °C und 75 °C liegen.")
-        if index == 0 and temperature > 55.0:
-            raise ValueError("Der Lüfter muss spätestens bei 55 °C anlaufen.")
+        if index == 0 and temperature > 50.0:
+            raise ValueError("Der Lüfter muss spätestens bei 50 °C anlaufen.")
         if previous_temp is not None and temperature - previous_temp < 0.5:
             raise ValueError("Zwischen zwei Temperaturstufen müssen mindestens 0,5 °C liegen.")
         if speed_raw != speed or speed < MIN_FAN_SPEED_PERCENT or speed > 100:
@@ -93,6 +93,20 @@ def validate_fan_curve(
 
     if normalized[-1]["temperature_c"] > 75.0 or normalized[-1]["speed_percent"] < 95:
         raise ValueError("Die letzte Stufe muss spätestens bei 75 °C mindestens 95 % erreichen.")
+
+    # Do not let custom profiles cool less than the official Pi 5 curve
+    # at its four firmware reference temperatures.
+    safety_floors = ((50.0, 29), (60.0, 49), (67.5, 69), (75.0, 95))
+    for threshold, minimum_speed in safety_floors:
+        active = [
+            point["speed_percent"] for point in normalized
+            if point["temperature_c"] <= threshold
+        ]
+        actual_speed = active[-1] if active else 0
+        if actual_speed < minimum_speed:
+            raise ValueError(
+                f"Bei {threshold:g} °C muss die Kurve mindestens {minimum_speed} % erreichen."
+            )
 
     hysteresis = _finite_number(hysteresis_c, "Hysterese")
     if hysteresis < 1.0 or hysteresis > 10.0:
