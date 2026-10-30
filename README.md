@@ -1,9 +1,17 @@
 # Takt Engine
 
-**Version 1.3.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.4.0** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
 
+## Änderungen in 1.4.0
+
+- Die Lüfterkurve kann jetzt aus **2 bis 10 Stufen** bestehen. Temperatur und Lüfterleistung sind je Stufe einstellbar; eine Kurvengrafik zeigt den Verlauf.
+- Die Kurve wird dauerhaft in `/etc/takt-engine/fan-curve.json` gespeichert. Beim ersten Speichern wird der Systemdienst `takt-engine-fan.service` aktiviert; er lädt das Profil auch nach jedem Neustart.
+- Ein Live-Regler kann die Lüfterleistung für 5 bis 300 Sekunden vorübergehend erhöhen. Er kann die aktuelle temperaturabhängige Mindestleistung nicht unterschreiten; nach Ablauf oder Neustart ist wieder die gespeicherte Kurve aktiv.
+- Sicherheitsverhalten: mindestens 29 % ab der ersten Stufe, letzter Punkt spätestens bei 75 °C mit mindestens 95 %, volle Leistung ab 80 °C und volle Leistung, falls die Temperatur nicht gelesen werden kann.
+- Animationen: rotierende Lüftergrafik, animiert einblendende Kurvenstufen, Live-Leistungsbalken, Kurvendiagramm und animierte Rückmeldung beim Speichern.
+- Die Steuerung verwendet die Linux-`pwm-fan`-Schnittstelle des kompatiblen Raspberry-Pi-5-Lüfters. Die native Firmware-Konfiguration unterstützt weiterhin nur vier `fan_tempN`-Stufen; ältere Vier-Stufen-Kurven können importiert werden.
 ## Änderungen in 1.3.0
 
 - Neuer Reiter **„Lüfterkurve“** für den Raspberry Pi 5 mit kompatiblem Firmware-Lüfter am offiziellen Lüfteranschluss.
@@ -57,6 +65,8 @@
 Aus Version 1.1.0 bleiben erhalten: Live-Monitoring, Benchmark-Historie, Vorschau des Konfigurations-Diffs, eigene Profile, Diagnoseexport, Sicherheitsbanner, Backups/Wiederherstellung, Desktop-Verknüpfung und zehn eingebaute Profile.
 
 ## Installation auf Raspberry Pi OS
+Die erweiterte Lüftersteuerung benötigt einen Raspberry Pi 5 mit kompatiblem Lüfter am offiziellen PWM-Anschluss. Installiere das aktualisierte Projekt mit dem Installationsskript neu, bevor du die Lüfterkurve in der App speicherst. Der Systemdienst wird erst beim ersten Speichern der Kurve aktiviert.
+
 
 1. Den Projektordner auf dem Pi entpacken.
 2. Im Terminal in den Ordner `Takt-Engine` wechseln.
