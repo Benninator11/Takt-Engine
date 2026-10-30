@@ -32,7 +32,9 @@ install -m 0644 "$PROJECT_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
 # Remove the older userspace PWM daemon. The Pi 5 firmware/kernel already
 # owns this fan; a second writer can fight the thermal cooling controller.
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl disable --now takt-engine-fan.service >/dev/null 2>&1 || true
+  if systemctl is-active --quiet takt-engine-fan.service || [[ -e /etc/systemd/system/takt-engine-fan.service ]]; then
+    systemctl disable --now takt-engine-fan.service
+  fi
 fi
 rm -f /etc/systemd/system/takt-engine-fan.service
 rm -f /usr/local/libexec/takt-engine-fan-control.py
