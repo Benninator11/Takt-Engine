@@ -88,7 +88,7 @@ class FanCurveTests(unittest.TestCase):
         rendered = render_firmware_fan_config(original, DEFAULT_FAN_CURVE, 5.0)
         self.assertIn("# user config", rendered)
         self.assertIn("dtparam=audio=on", rendered)
-        self.assertIn("[all]", rendered)
+        self.assertIn("[pi5]", rendered)
         self.assertIn("dtparam=fan_temp0=50000", rendered)
         self.assertIn("dtparam=fan_temp0_hyst=5000", rendered)
         self.assertIn("dtparam=fan_temp0_speed=74", rendered)
