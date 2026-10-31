@@ -153,10 +153,11 @@ def _format_clock(value):
 
 class TaktEngineWindow(Gtk.Window):
     def __init__(self):
-        self.language = load_ui_language()
+        language = load_ui_language()
         super().__init__(
-            title=translate_text("Takt Engine – Raspberry Pi Taktverwaltung", self.language)
+            title=translate_text("Takt Engine – Raspberry Pi Taktverwaltung", language)
         )
+        self.language = language
         self.set_default_size(1080, 760)
         self.set_border_width(14)
         self.connect("delete-event", self.on_close)
