@@ -306,7 +306,7 @@ def translate_text(value: str, language: str = "de") -> str:
     # periodic GTK refresh idempotent and lets the same function switch both ways.
     normalized = value
     for english, german in REVERSE_TRANSLATIONS:
-        pattern = re.compile(r"(?<!\\w)" + re.escape(english) + r"(?!\\w)")
+        pattern = re.compile(r"(?<!\w)" + re.escape(english) + r"(?!\\w)")
         normalized = pattern.sub(lambda _match, replacement=german: replacement, normalized)
 
     if language != "en":
@@ -319,7 +319,7 @@ def translate_text(value: str, language: str = "de") -> str:
     translated = normalized
     for german, english in PHRASES:
         if german:
-            pattern = re.compile(r"(?<!\\w)" + re.escape(german) + r"(?!\\w)")
+            pattern = re.compile(r"(?<!\w)" + re.escape(german) + r"(?!\\w)")
             translated = pattern.sub(lambda _match, replacement=english: replacement, translated)
     return translated
 
