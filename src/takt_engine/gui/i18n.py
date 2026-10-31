@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import re
 
 
 UI_SETTINGS_PATH = Path.home() / ".config" / "takt-engine" / "ui-settings.json"
@@ -187,6 +188,105 @@ TRANSLATIONS = {
     "Automatische Rückkehr wurde deaktiviert.": "Automatic rollback has been disabled.",
 }
 
+TRANSLATIONS.update({
+    "Temperatur (°C)": "Temperature (°C)",
+    "Lüfterleistung (%)": "Fan speed (%)",
+    "Vierstufige Standardkurve geladen. Speichere sie und starte den Pi neu, damit sie aktiv wird.": "Four-stage default curve loaded. Save it and reboot the Pi to activate it.",
+    "Firmware-Lüfterkurve aus config.txt geladen.": "Firmware fan curve loaded from config.txt.",
+    "Kurve noch nicht gültig – prüfe Reihenfolge, Temperaturen und Drehzahlen. ": "Curve is not valid yet – check the order, temperatures and fan speeds. ",
+    "4 Firmware-Stufen · Änderungen noch nicht gespeichert.": "4 firmware stages · changes not saved yet.",
+    "Firmwarekurve in config.txt gespeichert · Neustart erforderlich.": "Firmware curve saved in config.txt · reboot required.",
+    "Takt Engine erstellt zuerst eine Sicherung und schreibt die vier nativen fan_temp-Stufen in config.txt. Danach übernimmt die Raspberry-Pi-Firmware die Lüftersteuerung. Die Änderung wird erst nach einem Neustart aktiv. Der alte konkurrierende Takt-Engine-PWM-Dienst wird deaktiviert.": "Takt Engine first creates a backup and writes the four native fan_temp stages to config.txt. The Raspberry Pi firmware then takes over fan control. The change becomes active only after a reboot. The old competing Takt Engine PWM service is disabled.",
+    "Firmware-Lüfterkurve speichern?": "Save firmware fan curve?",
+    "Regler synchron mit config.txt · automatische Prüfung alle 3 Sekunden. Live-Takt kann sich durch DVFS und Last unterscheiden.": "Controls synced with config.txt · automatic check every 3 seconds. Live clock may vary with DVFS and workload.",
+    "Nicht gespeicherte Regleränderungen. config.txt wird alle 3 Sekunden geprüft; deine Auswahl wird nicht automatisch überschrieben.": "Unsaved control changes. config.txt is checked every 3 seconds; your selection is not overwritten automatically.",
+    "config.txt wurde extern geändert. Deine Regleränderungen bleiben erhalten. Nutze „config.txt neu einlesen“, um die neuen Werte zu übernehmen.": "config.txt was changed externally. Your control changes are preserved. Use “Reload config.txt” to load the new values.",
+    "Reglerwerte wirklich neu einlesen?": "Really reload control values?",
+    "Nicht gespeicherte Änderungen an den Reglern werden verworfen und durch die Werte aus config.txt ersetzt.": "Unsaved control changes will be discarded and replaced with the values from config.txt.",
+    "Sicherung wird erstellt; die Berechtigungsabfrage kann erscheinen …": "Creating backup; a permission prompt may appear …",
+    "Einstellungen geschrieben. Sicherung:": "Settings written. Backup:",
+    "✦ Taktprofil wird vorbereitet …": "✦ Preparing clock profile …",
+    "Die Werte aus config.txt konnten nicht neu eingelesen werden.": "The values from config.txt could not be reloaded.",
+    "Anwenden ist nur auf einem unterstützten Pi 4/Pi 5 mit vorhandener config.txt möglich.": "Applying settings is available only on a supported Pi 4/Pi 5 with an existing config.txt.",
+    "Konfigurationsvorschau konnte nicht erstellt werden:": "Could not create configuration preview:",
+    "config.txt kann nicht gelesen werden:": "Could not read config.txt:",
+    "config.txt-Werte konnten nicht gelesen werden:": "Could not read config.txt values:",
+    "App-Grenzen:": "App limits:",
+    "config.txt-Wert": "config.txt value",
+    "liegt außerhalb und kann nicht angewendet werden.": "is outside the allowed range and cannot be applied.",
+    "Bitte stoppe zuerst den laufenden Benchmark und warte, bis er beendet ist.": "Please stop the running benchmark first and wait until it has finished.",
+    "Bitte stoppe zuerst den laufenden Benchmark.": "Please stop the running benchmark first.",
+    "Eigene Taktprofile können nur für einen unterstützten Raspberry Pi 4 oder Pi 5 gespeichert werden.": "Custom clock profiles can only be saved on a supported Raspberry Pi 4 or Pi 5.",
+    "Das Profil wurde nicht gefunden; die Profilliste wurde möglicherweise in einer anderen Sitzung geändert.": "The profile was not found; the profile list may have changed in another session.",
+    "Es gibt noch keine eigenen Profile zum Exportieren.": "There are no custom profiles to export yet.",
+    "Profil wurde zwischenzeitlich entfernt. Bitte erneut versuchen.": "The profile was removed in the meantime. Please try again.",
+    "Profil wurde nicht importiert:": "Profile was not imported:",
+    "Es gibt keinen gültigen Vorschlag zum Laden.": "There is no valid suggestion to load.",
+    "Der Vorschlag wurde nur in die Regler geladen. config.txt wurde nicht geändert.": "The suggestion was only loaded into the controls. config.txt was not changed.",
+    "Vorschlag konnte nicht geladen werden:": "Could not load suggestion:",
+    "Noch keine über Takt Engine angewendeten Werte zum Verifizieren gespeichert.": "No values applied through Takt Engine have been saved for verification yet.",
+    "Die config.txt stimmt nicht mehr mit dem gespeicherten Testprofil überein. Takt Engine bestätigt den Test deshalb nicht automatisch. Prüfe die Regler und den Status.": "config.txt no longer matches the saved test profile. Takt Engine therefore will not confirm the test automatically. Check the controls and status.",
+    "Kein unbestätigtes Testprofil gefunden.": "No unconfirmed test profile found.",
+    "Der Neustart ist noch nicht erkannt. Bestätige den Teststart erst nach dem Neustart.": "The reboot has not been detected yet. Confirm the test boot only after rebooting.",
+    "System-Selbsttest:": "System self-test:",
+    "Checks erfüllt": "checks passed",
+    "Der Selbsttest verändert keine Konfiguration und erzeugt keine CPU-Last.": "The self-test does not change configuration or create CPU load.",
+    "Hardware-/Firmware-Kompatibilität": "Hardware/firmware compatibility",
+    "Kompatibilitätsprüfung fehlgeschlagen:": "Compatibility check failed:",
+    "Config-Inspector fehlgeschlagen:": "Config inspector failed:",
+    "FEHLER: Keine lesbare config.txt am üblichen Boot-Pfad gefunden.": "ERROR: No readable config.txt found at the usual boot path.",
+    "Profil geladen:": "Profile loaded:",
+    "Verlauf konnte nicht gelesen werden:": "Could not read history:",
+    "Testprofil wird nach dem Neustart bestätigt.": "Test profile will be confirmed after reboot.",
+    "Automatische Rückkehr wurde deaktiviert.": "Automatic rollback has been disabled.",
+    "Profil exportiert:": "Profile exported:",
+    "Profil konnte nicht exportiert werden:": "Could not export profile:",
+    "Profil konnte nicht gelöscht werden:": "Could not delete profile:",
+    "Profil importiert:": "Profile imported:",
+    "Diagnosebericht konnte nicht gespeichert werden:": "Could not save diagnostic report:",
+    "Wiederherstellen ist nur auf einem unterstützten Pi 4/Pi 5 möglich.": "Restore is available only on a supported Pi 4/Pi 5.",
+    "Keine Sicherungen gefunden.": "No backups found.",
+    "Gesucht wurde in:": "Searched in:",
+    "Konfiguration wirklich zurückspielen?": "Really restore the configuration?",
+    "Die aktuelle config.txt wird zuerst zusätzlich gesichert.": "The current config.txt will first be backed up as well.",
+    "Ausgewählte Sicherung:": "Selected backup:",
+    "Die Wiederherstellung benötigt eine Rechteabfrage und einen Neustart.": "Restoring requires authorization and a reboot.",
+    "Sichern und wiederherstellen": "Back up and restore",
+    "Sicherung wiederhergestellt.": "Backup restored.",
+    "Benchmark konnte nicht gespeichert werden:": "Could not save benchmark:",
+    "Warnung: Ergebnis konnte nicht gespeichert werden:": "Warning: could not save result:",
+    "Benchmark konnte nicht ausgeführt werden.": "Benchmark could not be run.",
+    "Der Benchmark bricht bei 80 °C ab.": "The benchmark stops at 80 °C.",
+    "Kühlungssteuerung:": "Cooling control:",
+    "nicht aktiv erkannt": "not detected as active",
+    "Live-Werte sind Momentaufnahmen; Werte können unter Last variieren.": "Live values are snapshots; values may vary under load.",
+    "gespeicherte Werte sind vorgesehene Werte, nicht zwingend der aktuell anliegende Takt.": "Saved values are target values and are not necessarily the currently applied clock.",
+    "Aktuelle Regleränderungen wurden noch nicht angewendet.": "Current control changes have not been applied yet.",
+    "Taktprofil wird vorbereitet": "Preparing clock profile",
+    "Firmwarekurve konnte nicht gelesen werden:": "Could not read firmware curve:",
+    "Die Firmwarekurve konnte nicht gelesen werden:": "Could not read the firmware curve:",
+    "Stufe": "Stage",
+    "Zielwert": "Target",
+    "Istwert": "Actual",
+    "Hysterese": "Hysteresis",
+    "Standardkurve": "Default curve",
+    "Lüfterleistung": "Fan speed",
+    "Kühlungsdaten": "Cooling data",
+    "Temperatur": "Temperature",
+    "CPU-Takt": "CPU clock",
+    "V3D-Takt": "V3D clock",
+    "CPU-Auslastung": "CPU utilization",
+    "Lüfterdrehzahl": "Fan speed",
+    "Drosselung": "Throttling",
+    "Unterspannung": "Undervoltage",
+    "Sicherung": "Backup",
+    "Neustart": "Reboot",
+    "Regler": "controls",
+    "Anwenden": "Apply",
+    "Fehler": "Error",
+    "gespeichert": "saved",
+})
+
 # These fragments are also used inside values that contain live measurements,
 # filenames, exception messages or user-created profile names.
 PHRASES = sorted(TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
@@ -206,7 +306,8 @@ def translate_text(value: str, language: str = "de") -> str:
     # periodic GTK refresh idempotent and lets the same function switch both ways.
     normalized = value
     for english, german in REVERSE_TRANSLATIONS:
-        normalized = normalized.replace(english, german)
+        pattern = re.compile(r"(?<!\\w)" + re.escape(english) + r"(?!\\w)")
+        normalized = pattern.sub(lambda _match, replacement=german: replacement, normalized)
 
     if language != "en":
         return normalized
@@ -217,8 +318,9 @@ def translate_text(value: str, language: str = "de") -> str:
 
     translated = normalized
     for german, english in PHRASES:
-        if german and german in translated:
-            translated = translated.replace(german, english)
+        if german:
+            pattern = re.compile(r"(?<!\\w)" + re.escape(german) + r"(?!\\w)")
+            translated = pattern.sub(lambda _match, replacement=english: replacement, translated)
     return translated
 
 
