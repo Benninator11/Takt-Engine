@@ -97,30 +97,47 @@ MAX_RESTORE_BACKUP_BYTES = 256 * 1024
 
 def _read_restore_backup(path: Path, requester_uid: int) -> str:
     """Read a user backup from one opened and verified regular-file handle."""
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    descriptor = None
     try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise ValueError(f"Sicherung konnte nicht sicher geöffnet werden: {exc}") from exc
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise ValueError(f"Sicherung konnte nicht sicher geöffnet werden: {exc}") from exc
 
-    with os.fdopen(descriptor, "rb") as handle:
-        metadata = os.fstat(handle.fileno())
+        # Check the descriptor before fdopen: directories cannot be wrapped as
+        # normal binary files on every platform.
+        metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("Die Sicherung muss eine reguläre Datei sein.")
-        if metadata.st_uid != requester_uid:
-            raise ValueError("Die Sicherung gehört nicht dem aufrufenden Benutzer.")
-        if metadata.st_size > MAX_RESTORE_BACKUP_BYTES:
-            raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
 
-        payload = handle.read(MAX_RESTORE_BACKUP_BYTES + 1)
-        if len(payload) > MAX_RESTORE_BACKUP_BYTES:
-            raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
-        if bytes((0,)) in payload:
-            raise ValueError("Die Sicherung enthält unzulässige NUL-Bytes.")
-        try:
-            return payload.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ValueError("Die Sicherung enthält ungültige UTF-8-Daten.") from exc
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = None
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("Die Sicherung muss eine reguläre Datei sein.")
+            if metadata.st_uid != requester_uid:
+                raise ValueError("Die Sicherung gehört nicht dem aufrufenden Benutzer.")
+            if metadata.st_size > MAX_RESTORE_BACKUP_BYTES:
+                raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
+
+            payload = handle.read(MAX_RESTORE_BACKUP_BYTES + 1)
+            if len(payload) > MAX_RESTORE_BACKUP_BYTES:
+                raise ValueError("Die Sicherung ist größer als 256 KiB und wird nicht wiederhergestellt.")
+            if bytes((0,)) in payload:
+                raise ValueError("Die Sicherung enthält unzulässige NUL-Bytes.")
+            try:
+                return payload.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError("Die Sicherung enthält ungültige UTF-8-Daten.") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def main() -> int:
