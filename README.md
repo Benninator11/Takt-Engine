@@ -1,8 +1,14 @@
 # Takt Engine
 
-**Version 1.5.3** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
+**Version 1.5.4** – GTK3-Desktopanwendung für Raspberry Pi OS mit dunklem Anthrazit- und warmem Claude-Orange-Design. Die halbtransparente „Benninator“-Signatur, die kurze Orange-Pulsanimation beim Anwenden und zusätzliche dezente Übergänge bleiben erhalten.
 
 > **Sicherheit:** Übertakten und Undervolting können Instabilität, Rechenfehler, Datenverlust oder Bootprobleme verursachen. App-Schutzgrenzen sind keine Garantie für Stabilität oder Lebensdauer. Sichere wichtige Daten, verwende ausreichende Kühlung und ein geeignetes Netzteil. Die manuell auswählbaren Pi-5-App-Eingabegrenzen sind in 1.2.1 auf 3,8 GHz CPU und 2,0 GHz V3D erweitert. Das sind ausdrücklich experimentelle Eingabegrenzen, keine vom Hersteller zugesicherten stabilen Takte. Werte oberhalb von 2,8 GHz CPU oder 1,0 GHz V3D benötigen eine zusätzliche Warnbestätigung. Raspberry Pi nennt als Pi-5-Standardwerte 2,4 GHz CPU und 960 MHz V3D; sehr hohe Werte können ignoriert werden, Instabilität verursachen oder den Start verhindern.
+
+## Änderungen in 1.5.4
+
+- Die GTK3-Oberfläche kann über einen **DE/EN-Schalter** in der Kopfzeile vollständig zwischen Deutsch und Englisch umgeschaltet werden.
+- Die gewählte Sprache wird pro Benutzer unter `~/.config/takt-engine/ui-settings.json` gespeichert und nach einem Neustart wiederhergestellt. Bestehende Installationen starten weiterhin auf Deutsch.
+- Live-Status, Lüfteranzeigen, Diagnoseausgaben und Auswahlfeld-Beschriftungen werden ebenfalls übersetzt. Die internen Auswahlwerte und Taktprofile bleiben unverändert.
 
 ## Änderungen in 1.5.3
 
