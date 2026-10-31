@@ -428,13 +428,33 @@ TRANSLATIONS.update({
     "Stärkerer Testschritt mit höherem Instabilitätsrisiko. Nur einzeln testen; bei Fehlern auf 0 µV zurückstellen.": "Stronger test step with a higher risk of instability. Test it on its own; return to 0 µV if errors occur.",
 })
 
-# These fragments are also used inside values that contain live measurements,
-# filenames, exception messages or user-created profile names.
+TRANSLATIONS.update({
+    "Last und Kühlung im Blick behalten.": "Monitor workload and cooling.",
+    "Netzteil, Kühlung und Last prüfen.": "Check the power supply, cooling and workload.",
+    "erkannt.": "detected.",
+    "Die Spannungsregelung bleibt modellabhängig.": "Voltage control remains model-dependent.",
+    "Werte aus config.txt sind nur Sollwerte": "Values in config.txt are targets only",
+    "Live-Takt kann sich durch DVFS und Last unterscheiden.": "Live clock may vary with DVFS and workload.",
+    "Drehzahl nicht verfügbar": "Fan speed unavailable",
+    "Kein passendes Profil gefunden.": "No matching profile found.",
+    "Anwenden ist nur auf einem unterstützten Pi": "Applying settings is available only on a supported Pi",
+})
+
+# Compile once: the periodic GTK refresh runs on a Raspberry Pi and should not
+# rebuild hundreds of regular expressions every second.
 PHRASES = sorted(TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
+PHRASE_PATTERNS = tuple(
+    (re.compile(r"(?<!\w)" + re.escape(german) + r"(?!\w)"), english)
+    for german, english in PHRASES if german
+)
 REVERSE_TRANSLATIONS = sorted(
     ((english, german) for german, english in TRANSLATIONS.items() if english != german),
     key=lambda item: len(item[0]),
     reverse=True,
+)
+REVERSE_PATTERNS = tuple(
+    (re.compile(r"(?<!\w)" + re.escape(english) + r"(?!\w)"), german)
+    for english, german in REVERSE_TRANSLATIONS
 )
 
 
@@ -446,8 +466,7 @@ def translate_text(value: str, language: str = "de") -> str:
     # Normalize English text back to the German source first. This makes the
     # periodic GTK refresh idempotent and lets the same function switch both ways.
     normalized = value
-    for english, german in REVERSE_TRANSLATIONS:
-        pattern = re.compile(r"(?<!\w)" + re.escape(english) + r"(?!\w)")
+    for pattern, german in REVERSE_PATTERNS:
         normalized = pattern.sub(lambda _match, replacement=german: replacement, normalized)
 
     if language != "en":
@@ -458,10 +477,8 @@ def translate_text(value: str, language: str = "de") -> str:
         return exact
 
     translated = normalized
-    for german, english in PHRASES:
-        if german:
-            pattern = re.compile(r"(?<!\w)" + re.escape(german) + r"(?!\w)")
-            translated = pattern.sub(lambda _match, replacement=english: replacement, translated)
+    for pattern, english in PHRASE_PATTERNS:
+        translated = pattern.sub(lambda _match, replacement=english: replacement, translated)
     return translated
 
 
