@@ -20,6 +20,7 @@ except (ImportError, ValueError) as exc:  # pragma: no cover - depends on target
     )
 
 from takt_engine import __version__
+from takt_engine.gui.i18n import load_ui_language, save_ui_language, translate_text
 from takt_engine.bench.runner import run_benchmark
 from takt_engine.core.apply import (
     apply_fan_curve,
@@ -152,7 +153,10 @@ def _format_clock(value):
 
 class TaktEngineWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Takt Engine – Raspberry Pi Taktverwaltung")
+        self.language = load_ui_language()
+        super().__init__(
+            title=translate_text("Takt Engine – Raspberry Pi Taktverwaltung", self.language)
+        )
         self.set_default_size(1080, 760)
         self.set_border_width(14)
         self.connect("delete-event", self.on_close)
@@ -218,6 +222,12 @@ class TaktEngineWindow(Gtk.Window):
         self.nickname_label.set_valign(Gtk.Align.START)
         self.nickname_label.set_xalign(1)
         header_row.pack_end(self.nickname_label, False, False, 0)
+        self.language_button = Gtk.Button(label="EN" if self.language == "de" else "DE")
+        self.language_button.set_tooltip_text(
+            "Auf Englisch umschalten" if self.language == "de" else "Switch to German"
+        )
+        self.language_button.connect("clicked", self._toggle_language)
+        header_row.pack_end(self.language_button, False, False, 0)
         self.restart_button = Gtk.Button(label="↻ Neustart…")
         self.restart_button.set_tooltip_text("Den Raspberry Pi nach Bestätigung vollständig neu starten")
         self.restart_button.get_style_context().add_class("suggested-action")
@@ -254,9 +264,127 @@ class TaktEngineWindow(Gtk.Window):
         self.refresh_status()
         self._refresh_verification_status()
         self._refresh_tuning_history()
+        self._refresh_language_widgets()
         GLib.idle_add(self._maybe_prompt_trial_confirmation)
+        GLib.timeout_add_seconds(1, self._language_refresh_tick)
         GLib.timeout_add_seconds(3, self.refresh_status)
         GLib.timeout_add(650, self._tick_live_badge)
+
+    def _toggle_language(self, _button=None):
+        """Switch the complete UI language without rebuilding or changing app state."""
+        self.language = "en" if self.language == "de" else "de"
+        try:
+            save_ui_language(self.language)
+        except OSError as exc:
+            # Keep the language change active for this session even if the setting
+            # cannot be saved (for example, a read-only home directory).
+            print(f"Takt Engine: Spracheinstellung konnte nicht gespeichert werden: {exc}", file=sys.stderr)
+
+        self.language_button.set_label("EN" if self.language == "de" else "DE")
+        self.language_button.set_tooltip_text(
+            "Auf Englisch umschalten" if self.language == "de" else "Switch to German"
+        )
+        self._refresh_language_widgets()
+        return False
+
+    def _language_refresh_tick(self):
+        # Several pages show live values and asynchronous results. Translating the
+        # widget tree periodically also catches text that was refreshed later.
+        self._refresh_language_widgets()
+        return True
+
+    def _refresh_language_widgets(self):
+        """Translate current labels, tabs, tooltips and read-only output widgets."""
+        try:
+            windows = Gtk.Window.list_toplevels()
+        except Exception:
+            windows = [self]
+        for window in windows:
+            self._translate_widget_tree(window, set())
+
+        self.set_title(
+            translate_text("Takt Engine – Raspberry Pi Taktverwaltung", self.language)
+        )
+        if hasattr(self, "language_button"):
+            self.language_button.set_label("EN" if self.language == "de" else "DE")
+            self.language_button.set_tooltip_text(
+                "Auf Englisch umschalten" if self.language == "de" else "Switch to German"
+            )
+
+    def _translate_widget_tree(self, widget, visited):
+        if widget is None or id(widget) in visited:
+            return
+        visited.add(id(widget))
+
+        if isinstance(widget, Gtk.Label):
+            current = widget.get_label()
+            if current:
+                translated = translate_text(current, self.language)
+                if widget.get_use_markup():
+                    widget.set_markup(translated)
+                else:
+                    widget.set_text(translated)
+
+        if isinstance(widget, Gtk.Button):
+            current = widget.get_label()
+            if current:
+                widget.set_label(translate_text(current, self.language))
+
+        if isinstance(widget, Gtk.Window):
+            current = widget.get_title()
+            if current:
+                widget.set_title(translate_text(current, self.language))
+
+        if isinstance(widget, Gtk.Entry):
+            placeholder = widget.get_placeholder_text()
+            if placeholder:
+                widget.set_placeholder_text(translate_text(placeholder, self.language))
+
+        if isinstance(widget, Gtk.ProgressBar):
+            progress_text = widget.get_text()
+            if progress_text:
+                widget.set_text(translate_text(progress_text, self.language))
+
+        if isinstance(widget, Gtk.TextView):
+            buffer = widget.get_buffer()
+            start = buffer.get_start_iter()
+            end = buffer.get_end_iter()
+            current = buffer.get_text(start, end, True)
+            if current:
+                translated = translate_text(current, self.language)
+                if translated != current:
+                    buffer.set_text(translated)
+
+        if isinstance(widget, Gtk.ComboBox):
+            model = widget.get_model()
+            if model is not None:
+                iterator = model.get_iter_first()
+                while iterator is not None:
+                    try:
+                        current = model.get_value(iterator, 0)
+                        if isinstance(current, str):
+                            translated = translate_text(current, self.language)
+                            if translated != current:
+                                model.set_value(iterator, 0, translated)
+                    except (AttributeError, TypeError, ValueError):
+                        pass
+                    iterator = model.iter_next(iterator)
+
+        try:
+            tooltip = widget.get_tooltip_text()
+        except (AttributeError, TypeError):
+            tooltip = None
+        if tooltip:
+            widget.set_tooltip_text(translate_text(tooltip, self.language))
+
+        if isinstance(widget, Gtk.Notebook):
+            for index in range(widget.get_n_pages()):
+                page = widget.get_nth_page(index)
+                self._translate_widget_tree(widget.get_tab_label(page), visited)
+
+        if isinstance(widget, Gtk.Container):
+            for child in widget.get_children():
+                self._translate_widget_tree(child, visited)
 
     def _make_page(self, title):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -2490,7 +2618,7 @@ class TaktEngineWindow(Gtk.Window):
         dialog = Gtk.MessageDialog(transient_for=self, flags=Gtk.DialogFlags.MODAL,
                                    message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
                                    text="Takt Engine")
-        dialog.format_secondary_text(message)
+        dialog.format_secondary_text(translate_text(str(message), self.language))
         dialog.run()
         dialog.destroy()
 
@@ -2498,7 +2626,7 @@ class TaktEngineWindow(Gtk.Window):
         dialog = Gtk.MessageDialog(transient_for=self, flags=Gtk.DialogFlags.MODAL,
                                    message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK,
                                    text="Takt Engine")
-        dialog.format_secondary_text(message)
+        dialog.format_secondary_text(translate_text(str(message), self.language))
         dialog.run()
         dialog.destroy()
 
