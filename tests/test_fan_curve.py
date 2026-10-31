@@ -133,6 +133,45 @@ class FanCurveTests(unittest.TestCase):
         self.assertTrue(redraws, "Der SpinButton muss den Diagramm-Refresh ausgelöst haben.")
         self.assertEqual(status_text[-1], "4 Firmware-Stufen · Änderungen noch nicht gespeichert.")
 
+    @unittest.skipUnless(GTK_AVAILABLE, "GTK3/PyGObject oder ein X-Display ist nicht verfügbar")
+    def test_language_switch_translates_widgets_and_preserves_combo_values(self):
+        from takt_engine.gui.main import TaktEngineWindow
+        from takt_engine.gui.i18n import translate_text
+
+        window = Gtk.Window()
+        layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        title = Gtk.Label(label="Übertakten")
+        combo = Gtk.ComboBoxText()
+        combo.append_text("Ausgewogen")
+        combo.set_active(0)
+        layout.pack_start(title, False, False, 0)
+        layout.pack_start(combo, False, False, 0)
+        window.add(layout)
+        window.show_all()
+
+        state = SimpleNamespace(language="en")
+        state._translate_combo_cell = lambda _combo, renderer, model, iterator: renderer.set_property(
+            "text", translate_text(model.get_value(iterator, 0), state.language)
+        )
+        state._translate_widget_tree = lambda widget, visited: TaktEngineWindow._translate_widget_tree(
+            state, widget, visited
+        )
+
+        TaktEngineWindow._translate_widget_tree(state, window, set())
+        self.assertEqual(title.get_text(), "Overclocking")
+        model = combo.get_model()
+        iterator = model.get_iter_first()
+        self.assertEqual(model.get_value(iterator, 0), "Ausgewogen")
+        renderer = combo.get_cells()[0]
+        TaktEngineWindow._translate_combo_cell(state, combo, renderer, model, iterator)
+        self.assertEqual(renderer.get_property("text"), "Balanced")
+
+        state.language = "de"
+        TaktEngineWindow._translate_widget_tree(state, window, set())
+        self.assertEqual(title.get_text(), "Übertakten")
+        self.assertEqual(model.get_value(iterator, 0), "Ausgewogen")
+        window.destroy()
+
     def test_live_fan_page_connects_controls_and_keeps_separate_labels(self):
         gui = Path(__file__).resolve().parents[1] / "src" / "takt_engine" / "gui" / "main.py"
         source = gui.read_text()
