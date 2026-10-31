@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "takt-engine"
-version = "1.5.3"
-description = "GTK3-Oberfläche für Raspberry-Pi-Taktprofile, Lüfterkurven, Diagnose, Live-Monitoring und Stabilitätstests"
+version = "1.5.4"
+description = "Zweisprachige GTK3-Oberfläche für Raspberry-Pi-Taktprofile, Lüfterkurven, Diagnose, Live-Monitoring und Stabilitätstests"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
