@@ -293,6 +293,11 @@ class TaktEngineWindow(Gtk.Window):
         self._refresh_language_widgets()
         return True
 
+    def _translate_combo_cell(self, _combo, renderer, model, iterator):
+        value = model.get_value(iterator, 0)
+        if isinstance(value, str):
+            renderer.set_property("text", translate_text(value, self.language))
+
     def _refresh_language_widgets(self):
         """Translate current labels, tabs, tooltips and read-only output widgets."""
         try:
@@ -345,7 +350,7 @@ class TaktEngineWindow(Gtk.Window):
             if progress_text:
                 widget.set_text(translate_text(progress_text, self.language))
 
-        if isinstance(widget, Gtk.TextView):
+        if isinstance(widget, Gtk.TextView) and widget.get_name() == "takt-translatable":
             buffer = widget.get_buffer()
             start = buffer.get_start_iter()
             end = buffer.get_end_iter()
@@ -356,19 +361,13 @@ class TaktEngineWindow(Gtk.Window):
                     buffer.set_text(translated)
 
         if isinstance(widget, Gtk.ComboBox):
-            model = widget.get_model()
-            if model is not None:
-                iterator = model.get_iter_first()
-                while iterator is not None:
-                    try:
-                        current = model.get_value(iterator, 0)
-                        if isinstance(current, str):
-                            translated = translate_text(current, self.language)
-                            if translated != current:
-                                model.set_value(iterator, 0, translated)
-                    except (AttributeError, TypeError, ValueError):
-                        pass
-                    iterator = model.iter_next(iterator)
+            # Keep the original German model values so callbacks and saved
+            # settings remain language-independent. Only the displayed cell
+            # text is translated.
+            for cell in widget.get_cells():
+                if isinstance(cell, Gtk.CellRendererText):
+                    widget.set_cell_data_func(cell, self._translate_combo_cell)
+            widget.queue_draw()
 
         try:
             tooltip = widget.get_tooltip_text()
@@ -1609,6 +1608,7 @@ class TaktEngineWindow(Gtk.Window):
         self.bench_history_label.get_style_context().add_class("dim-label")
         page.pack_start(self.bench_history_label, False, False, 0)
         self.bench_log = Gtk.TextView()
+        self.bench_log.set_name("takt-translatable")
         self.bench_log.set_editable(False)
         self.bench_log.set_cursor_visible(False)
         self.bench_log.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
@@ -1620,6 +1620,7 @@ class TaktEngineWindow(Gtk.Window):
     def _build_status_page(self):
         page = self._make_page("Status")
         self.status_view = Gtk.TextView()
+        self.status_view.set_name("takt-translatable")
         self.status_view.set_editable(False)
         self.status_view.set_cursor_visible(False)
         self.status_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
@@ -1669,6 +1670,7 @@ class TaktEngineWindow(Gtk.Window):
             action_row.pack_start(button, False, False, 0)
         body.pack_start(action_row, False, False, 0)
         self.tools_output = Gtk.TextView()
+        self.tools_output.set_name("takt-translatable")
         self.tools_output.set_editable(False)
         self.tools_output.set_cursor_visible(False)
         self.tools_output.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
@@ -1760,6 +1762,7 @@ class TaktEngineWindow(Gtk.Window):
         history_buttons.pack_start(refresh_history, False, False, 0)
         body.pack_start(history_buttons, False, False, 0)
         self.tuning_history_view = Gtk.TextView()
+        self.tuning_history_view.set_name("takt-translatable")
         self.tuning_history_view.set_editable(False)
         self.tuning_history_view.set_cursor_visible(False)
         self.tuning_history_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
